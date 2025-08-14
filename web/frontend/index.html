@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="A new Flutter project.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="silentflow">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>silentflow</title>
+  <link rel="manifest" href="manifest.json">
+
+  <!-- AI Chat Widget CSS -->
+  <style>
+    /* 浮动聊天按钮 */
+    #ai-chat-toggle {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 60px;
+      height: 60px;
+      background: #4285f4;
+      border-radius: 50%;
+      border: none;
+      color: white;
+      font-size: 24px;
+      cursor: pointer;
+      z-index: 9999;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* 聊天窗口容器 */
+    #ai-chat-container {
+      position: fixed;
+      bottom: 90px;
+      right: 20px;
+      width: 350px;
+      max-width: 90vw;
+      height: 500px;
+      max-height: 70vh;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      display: flex;
+      flex-direction: column;
+      z-index: 9998;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      transform: translateY(20px);
+      opacity: 0;
+      transition: all 0.3s ease;
+      pointer-events: none;
+    }
+
+    #ai-chat-container.visible {
+      transform: translateY(0);
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* 聊天窗口头部 */
+    #ai-chat-header {
+      padding: 16px;
+      background: #4285f4;
+      color: white;
+      border-radius: 12px 12px 0 0;
+      font-weight: 500;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    #ai-chat-close {
+      background: none;
+      border: none;
+      color: white;
+      font-size: 20px;
+      cursor: pointer;
+      padding: 4px;
+    }
+
+    /* 消息区域 */
+    #ai-chat-messages {
+      flex: 1;
+      padding: 12px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* 消息气泡 */
+    .message {
+      max-width: 80%;
+      padding: 10px 14px;
+      border-radius: 18px;
+      word-wrap: break-word;
+      line-height: 1.4;
+    }
+
+    .user-message {
+      background: #e8f0fe;
+      align-self: flex-end;
+      color: #0d47a1;
+      border-bottom-right-radius: 4px;
+    }
+
+    .ai-message {
+      background: #f1f3f4;
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+
+    /* 输入区域 */
+    #ai-chat-input {
+      display: flex;
+      padding: 12px;
+      border-top: 1px solid #e0e0e0;
+      background: #fafafa;
+      border-radius: 0 0 12px 12px;
+    }
+
+    #ai-chat-text {
+      flex: 1;
+      padding: 10px 14px;
+      border: 1px solid #dadce0;
+      border-radius: 20px;
+      outline: none;
+      font-size: 14px;
+    }
+
+    #ai-chat-send {
+      margin-left: 8px;
+      background: #4285f4;
+      color: white;
+      border: none;
+      border-radius: 20px;
+      padding: 0 16px;
+      cursor: pointer;
+      font-size: 14px;
+      min-width: 60px;
+    }
+
+    /* 加载指示器 */
+    .typing-indicator {
+      color: #5f6368;
+      font-style: italic;
+      padding: 8px 16px;
+      align-self: flex-start;
+    }
+
+    /* 移动端适配 */
+    @media (max-width: 480px) {
+      #ai-chat-container {
+        width: 90vw;
+        right: 5vw;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Flutter 主应用容器 -->
+  <script src="flutter_bootstrap.js" async></script>
+
+  <!-- AI 聊天浮动按钮 -->
+  <button id="ai-chat-toggle" title="AI助手">💬</button>
+
+  <!-- AI 聊天窗口 -->
+  <div id="ai-chat-container">
+    <div id="ai-chat-header">
+      <span>AI 助手</span>
+      <button id="ai-chat-close" title="关闭">×</button>
+    </div>
+    <div id="ai-chat-messages"></div>
+    <div id="ai-chat-input">
+      <input type="text" id="ai-chat-text" placeholder="输入消息..." autocomplete="off">
+      <button id="ai-chat-send">发送</button>
+    </div>
+  </div>
+
+  <!-- AI 聊天功能 JavaScript -->
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // 获取DOM元素
+      const toggleBtn = document.getElementById('ai-chat-toggle');
+      const chatContainer = document.getElementById('ai-chat-container');
+      const closeBtn = document.getElementById('ai-chat-close');
+      const messagesDiv = document.getElementById('ai-chat-messages');
+      const inputField = document.getElementById('ai-chat-text');
+      const sendBtn = document.getElementById('ai-chat-send');
+
+      // 从本地存储加载历史记录
+      function loadHistory() {
+        const history = localStorage.getItem('ai_chat_history');
+        if (history) {
+          messagesDiv.innerHTML = history;
+          scrollToBottom();
+        }
+      }
+
+      // 保存对话到本地存储
+      function saveHistory() {
+        localStorage.setItem('ai_chat_history', messagesDiv.innerHTML);
+      }
+
+      // 滚动到底部
+      function scrollToBottom() {
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      }
+
+      // 添加消息到聊天框
+      function addMessage(content, isUser) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${isUser ? 'user-message' : 'ai-message'}`;
+        messageDiv.textContent = content;
+        messagesDiv.appendChild(messageDiv);
+        saveHistory();
+        scrollToBottom();
+      }
+
+      // 显示"正在输入"指示器
+      function showTyping() {
+        const typingDiv = document.createElement('div');
+        typingDiv.className = 'typing-indicator';
+        typingDiv.textContent = '兄弟别急，我在思考...';
+        typingDiv.id = 'typing-indicator';
+        messagesDiv.appendChild(typingDiv);
+        scrollToBottom();
+      }
+
+      // 隐藏"正在输入"指示器
+      function hideTyping() {
+        const typingDiv = document.getElementById('typing-indicator');
+        if (typingDiv) {
+          typingDiv.remove();
+        }
+      }
+
+      // 调用后端API
+      async function getAIResponse(prompt) {
+          // 显示长时间等待提示（超过5秒时）
+          let loadingTimeout = setTimeout(() => {
+              showToast('模型正在加载中，首次启动可能需要30秒左右...');
+          }, 5000);
+
+          try {
+              const startTime = Date.now();
+              const response = await fetch('/api/chat', {
+                  method: 'POST',
+                  headers: {
+                      'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({ 
+                      message: prompt,
+                      // 添加等待模型加载的标识
+                      wait_for_model: true  
+                  })
+              });
+
+              // 清除加载提示
+              clearTimeout(loadingTimeout);
+
+              // 如果加载时间超过3秒，显示通知
+              if (Date.now() - startTime > 3000) {
+                  showToast('模型已加载完成，后续响应会更快');
+              }
+
+              if (!response.ok) {
+                  const errorData = await response.json();
+                  throw new Error(errorData.error || "请求失败");
+              }
+
+              return await response.json();
+          } catch (error) {
+              console.error("AI请求失败:", error);
+              throw error;
+          }
+      }
+
+      // 处理发送消息
+      async function handleSend() {
+        const message = inputField.value.trim();
+        if (!message) return;
+
+        // 添加用户消息
+        addMessage(message, true);
+        inputField.value = '';
+
+        // 显示正在输入并获取AI响应
+        showTyping();
+        const aiResponse = await getAIResponse(message);
+        hideTyping();
+
+        // 添加AI响应
+        addMessage(aiResponse, false);
+      }
+
+      // 事件监听
+      toggleBtn.addEventListener('click', function() {
+        chatContainer.classList.toggle('visible');
+      });
+
+      closeBtn.addEventListener('click', function() {
+        chatContainer.classList.remove('visible');
+      });
+
+      sendBtn.addEventListener('click', handleSend);
+
+      inputField.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') handleSend();
+      });
+
+      // 初始化加载历史记录
+      loadHistory();
+    });
+  </script>
+</body>
+</html>
