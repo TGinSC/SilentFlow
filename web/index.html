@@ -1,38 +1,70 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
+  <!-- Flutter基础配置 -->
   <base href="$FLUTTER_BASE_HREF">
-
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="A new Flutter project.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- iOS meta tags & icons -->
+  <!-- iOS配置 -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="silentflow">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
-  <!-- Favicon -->
+  <!-- 图标和清单 -->
   <link rel="icon" type="image/png" href="favicon.png"/>
-
-  <title>silentflow</title>
   <link rel="manifest" href="manifest.json">
+  <title>silentflow</title>
+
+  <!-- AI助手样式 -->
+  <link rel="stylesheet" href="css/ai-assistant.css">
+  <!-- 字体和图标 -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
+  <!-- Flutter应用容器 -->
   <script src="flutter_bootstrap.js" async></script>
+
+  <!-- AI助手组件 -->
+  <div id="ai-assistant">
+    <div class="ai-container">
+      <header class="ai-header">
+        <div class="ai-title">
+          <i class="fas fa-robot"></i>
+          <span>AI助手</span>
+        </div>
+        <button class="ai-close" id="aiClose">
+          <i class="fas fa-times"></i>
+        </button>
+      </header>
+      
+      <div class="ai-dialog" id="aiDialog">
+        <div class="ai-message">
+          <div class="message-bubble ai-bubble">
+            您好！我是您的AI助手，有什么可以帮您？
+          </div>
+        </div>
+      </div>
+      
+      <div class="ai-input-box">
+        <input type="text" id="aiInput" placeholder="输入您的问题..." class="ai-input">
+        <button id="aiSend" class="ai-send-button">
+          <i class="fas fa-paper-plane"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 触发按钮 -->
+  <button id="aiToggle" class="ai-toggle-button">
+    <i class="fas fa-robot"></i>
+  </button>
+
+  <!-- JavaScript文件 -->
+  <script src="js/ai-assistant.js"></script>
 </body>
 </html>
