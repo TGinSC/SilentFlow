@@ -1,10 +1,11 @@
 // API 服务基类
 // 为后端接口预留统一的网络请求处理
 import 'package:dio/dio.dart';
+import 'storage_service.dart';
 
 class ApiService {
   static late Dio _dio;
-  static const String _baseUrl = 'https://api.silentflow.com'; // 后端接口地址
+  static const String _baseUrl = 'http://127.0.0.1:1411'; // 后端接口地址
 
   // 初始化网络请求配置
   static void initialize() {
@@ -23,23 +24,28 @@ class ApiService {
     // 请求拦截器
     _dio.interceptors.add(
       InterceptorsWrapper(
-        onRequest: (options, handler) {
-          // 添加认证token等
-          // final token = UserService.getAuthToken();
-          // if (token != null) {
-          //   options.headers['Authorization'] = 'Bearer $token';
-          // }
+        onRequest: (options, handler) async {
+          // 添加认证token
+          final token = await StorageService.getAuthToken();
+          if (token != null) {
+            options.headers['Authorization'] = 'Bearer $token';
+          }
           print('[REQUEST] ${options.method} ${options.uri}');
+          print('[REQUEST DATA] ${options.data}');
           handler.next(options);
         },
         onResponse: (response, handler) {
           print(
             '[RESPONSE] ${response.statusCode} ${response.requestOptions.uri}',
           );
+          print('[RESPONSE DATA] ${response.data}');
           handler.next(response);
         },
         onError: (error, handler) {
           print('[ERROR] ${error.message}');
+          if (error.response != null) {
+            print('[ERROR DATA] ${error.response?.data}');
+          }
           handler.next(error);
         },
       ),
