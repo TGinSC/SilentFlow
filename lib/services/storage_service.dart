@@ -21,12 +21,12 @@ class StorageService {
     bool rememberLogin = false,
   }) async {
     final prefs = await _prefs;
-    
+
     // 保存基础信息
     await prefs.setString(_keyUserId, userId);
     await prefs.setBool(_keyRememberLogin, rememberLogin);
     await prefs.setString(_keyLastLoginTime, DateTime.now().toIso8601String());
-    
+
     // 如果用户选择记住登录，保存用户名（不保存密码）
     if (rememberLogin) {
       final userInfo = {
@@ -35,7 +35,7 @@ class StorageService {
       };
       await prefs.setString(_keyUserInfo, json.encode(userInfo));
     }
-    
+
     // 保存认证Token
     if (authToken != null) {
       await prefs.setString(_keyAuthToken, authToken);
@@ -46,7 +46,7 @@ class StorageService {
   static Future<Map<String, String>?> getSavedUserInfo() async {
     final prefs = await _prefs;
     final userInfoStr = prefs.getString(_keyUserInfo);
-    
+
     if (userInfoStr != null) {
       final userInfo = json.decode(userInfoStr) as Map<String, dynamic>;
       return {
@@ -89,7 +89,7 @@ class StorageService {
   static Future<void> updateUserInfo(Map<String, dynamic> userInfo) async {
     final prefs = await _prefs;
     final currentUserInfo = await getSavedUserInfo();
-    
+
     if (currentUserInfo != null) {
       final updatedInfo = {
         ...currentUserInfo,
@@ -109,14 +109,43 @@ class StorageService {
   static Future<bool> isLoginExpired() async {
     final prefs = await _prefs;
     final lastLoginStr = prefs.getString(_keyLastLoginTime);
-    
+
     if (lastLoginStr == null) return true;
-    
+
     final lastLogin = DateTime.parse(lastLoginStr);
     final now = DateTime.now();
     final difference = now.difference(lastLogin);
-    
+
     // 设置登录有效期为7天
     return difference.inDays > 7;
+  }
+
+  // 通用数据保存方法
+  Future<void> saveData(String key, dynamic data) async {
+    final prefs = await StorageService._prefs;
+    final jsonString = json.encode(data);
+    await prefs.setString(key, jsonString);
+  }
+
+  // 通用数据获取方法
+  Future<dynamic> getData(String key) async {
+    final prefs = await StorageService._prefs;
+    final jsonString = prefs.getString(key);
+    if (jsonString != null) {
+      return json.decode(jsonString);
+    }
+    return null;
+  }
+
+  // 删除数据
+  Future<void> removeData(String key) async {
+    final prefs = await StorageService._prefs;
+    await prefs.remove(key);
+  }
+
+  // 检查数据是否存在
+  Future<bool> hasData(String key) async {
+    final prefs = await StorageService._prefs;
+    return prefs.containsKey(key);
   }
 }

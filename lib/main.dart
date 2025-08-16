@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/app_provider.dart';
-import 'providers/collaboration_pool_provider.dart';
+import 'providers/team_pool_provider.dart';
 import 'screens/main_tab_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'services/api_service.dart';
@@ -21,7 +21,7 @@ class SilentFlowApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AppProvider()),
-        ChangeNotifierProvider(create: (_) => CollaborationPoolProvider()),
+        ChangeNotifierProvider(create: (_) => TeamPoolProvider()),
       ],
       child: MaterialApp(
         title: '静默协作',
@@ -63,24 +63,38 @@ class AppInitializer extends StatefulWidget {
 }
 
 class _AppInitializerState extends State<AppInitializer> {
+  bool _isInitializing = true;
+
   @override
   void initState() {
     super.initState();
-    // 初始化应用状态
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    // 延迟初始化，先显示登录页面
+    _initializeApp();
+  }
+
+  Future<void> _initializeApp() async {
+    // 显示启动页面2秒
+    await Future.delayed(const Duration(seconds: 2));
+
+    if (mounted) {
+      setState(() {
+        _isInitializing = false;
+      });
+
+      // 异步初始化应用状态
       context.read<AppProvider>().initialize();
-    });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    // 如果正在初始化，显示启动页面
+    if (_isInitializing) {
+      return const SplashScreen();
+    }
+
     return Consumer<AppProvider>(
       builder: (context, appProvider, child) {
-        // 如果正在加载，显示启动页面
-        if (appProvider.isLoading) {
-          return const SplashScreen();
-        }
-
         // 根据登录状态决定显示登录页面还是主页面
         if (appProvider.isLoggedIn) {
           return const MainTabScreen();
@@ -99,32 +113,72 @@ class SplashScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.psychology,
-              size: 80,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(height: 24),
-            Text(
-              '静默协作',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.primary,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.indigo[300]!,
+              Colors.indigo[600]!,
+              Colors.purple[600]!,
+            ],
+          ),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(32),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.psychology,
+                  color: Colors.white,
+                  size: 80,
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '无沟通 · 低成本 · 高效率',
-              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-            ),
-            const SizedBox(height: 40),
-            const CircularProgressIndicator(),
-          ],
+              const SizedBox(height: 32),
+              const Text(
+                '静默协作',
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                '用技术连接人心，以数据驱动效率',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.white70,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 48),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(50),
+                ),
+                child: const CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
