@@ -28,10 +28,10 @@ class UserService {
       if (response.statusCode == 200) {
         final data = response.data;
         print('登录响应: $data');
-        
+
         if (data['error'] == null || data['error'].toString().isEmpty) {
           final returnedUserUID = data['userUID'];
-          
+
           // 根据后端返回的userUID获取完整用户信息
           final userInfo = await getUserProfile(returnedUserUID.toString());
           if (userInfo != null) {
@@ -41,7 +41,7 @@ class UserService {
               username: userInfo.name,
               rememberLogin: true,
             );
-            
+
             return userInfo;
           }
         } else {
@@ -67,7 +67,7 @@ class UserService {
     try {
       // 生成一个随机的用户ID或使用时间戳
       final userUID = DateTime.now().millisecondsSinceEpoch % 1000000;
-      
+
       print('尝试注册 - userUID: $userUID, password: $password');
 
       final response = await ApiService.post('/user/signup', data: {
@@ -78,7 +78,7 @@ class UserService {
       if (response.statusCode == 200) {
         final data = response.data;
         print('注册响应: $data');
-        
+
         if (data['error'] == null || data['error'].toString().isEmpty) {
           final returnedUserUID = data['userUID'];
 
@@ -121,7 +121,7 @@ class UserService {
         final data = response.data;
         if (data['user'] != null) {
           final userInfo = data['user'];
-          
+
           // 根据后端返回的数据结构创建User对象
           // 注意：API文档中字段名是 TeamsBelong 和 messions
           return User(
@@ -130,12 +130,36 @@ class UserService {
             createdAt: DateTime.now(), // 后端暂无创建时间字段
             isAnonymous: false,
             stats: UserStats(
-              completedTasks: userInfo['messions']?.length ?? 0, // 使用 messions 长度
-              joinedPools: userInfo['TeamsBelong']?.length ?? 0, // 使用 TeamsBelong 长度
-              averageTacitScore: userInfo['TeamsBelong']?.isNotEmpty == true 
-                ? userInfo['TeamsBelong'][0]['score']?.toDouble() ?? 0.0 
-                : 0.0,
+              completedTasks:
+                  userInfo['messions']?.length ?? 0, // 使用 messions 长度
+              joinedPools:
+                  userInfo['TeamsBelong']?.length ?? 0, // 使用 TeamsBelong 长度
+              averageTacitScore: userInfo['TeamsBelong']?.isNotEmpty == true
+                  ? userInfo['TeamsBelong'][0]['score']?.toDouble() ?? 0.0
+                  : 0.0,
               efficiencyTags: [], // 后端暂无此数据
+            ),
+            profile: const UserProfile(
+              workStyle: WorkStyle(
+                communicationStyle: 'direct',
+                workPace: 'stable',
+                preferredCollaborationMode: 'team',
+                workingHours: ['9:00-18:00'],
+                stressHandling: 'normal',
+                feedbackStyle: 'constructive',
+              ),
+              availability: AvailabilityInfo(
+                weeklySchedule: {
+                  'Monday': ['9:00-18:00']
+                },
+                timezone: 'UTC+8',
+                maxHoursPerWeek: 40,
+                busyPeriods: [],
+              ),
+              contact: ContactInfo(
+                email: 'user@example.com',
+                phone: '',
+              ),
             ),
           );
         }
@@ -193,7 +217,8 @@ class UserService {
   }
 
   // 加入团队 - POST /user/jointeam
-  static Future<bool> joinTeam(String userId, String teamId, String teamPassword) async {
+  static Future<bool> joinTeam(
+      String userId, String teamId, String teamPassword) async {
     try {
       final response = await ApiService.post('/user/jointeam', data: {
         'userUID': int.parse(userId),

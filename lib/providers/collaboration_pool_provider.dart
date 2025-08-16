@@ -44,12 +44,10 @@ class CollaborationPoolProvider with ChangeNotifier {
       clearError();
 
       final pools = await CollaborationPoolService.getUserPools(userId);
-      _userPools = pools
-          .where((pool) => pool.status == PoolStatus.active)
-          .toList();
-      _completedPools = pools
-          .where((pool) => pool.status == PoolStatus.completed)
-          .toList();
+      _userPools =
+          pools.where((pool) => pool.status == PoolStatus.active).toList();
+      _completedPools =
+          pools.where((pool) => pool.status == PoolStatus.completed).toList();
 
       notifyListeners();
     } catch (e) {
@@ -76,7 +74,8 @@ class CollaborationPoolProvider with ChangeNotifier {
     required String description,
     required bool isAnonymous,
     required bool isPublic,
-    int maxMembers = 10,
+    List<String> memberIds = const [],
+    String? createdBy,
   }) async {
     try {
       setLoading(true);
@@ -87,7 +86,8 @@ class CollaborationPoolProvider with ChangeNotifier {
         description: description,
         isAnonymous: isAnonymous,
         isPublic: isPublic,
-        maxMembers: maxMembers,
+        memberIds: memberIds,
+        createdBy: createdBy,
       );
 
       if (pool != null) {
@@ -136,13 +136,15 @@ class CollaborationPoolProvider with ChangeNotifier {
         return _poolProgresses[poolId];
       }
 
-      final progress = await CollaborationPoolService.getPoolProgress(poolId);
-      if (progress != null) {
-        _poolProgresses[poolId] = progress;
+      // 通过获取协作池详细信息来获取进度
+      final pool = await CollaborationPoolService.getPool(poolId);
+      if (pool != null) {
+        _poolProgresses[poolId] = pool.progress;
         notifyListeners();
+        return pool.progress;
       }
 
-      return progress;
+      return null;
     } catch (e) {
       setError('获取协作池进度失败: $e');
       return null;
