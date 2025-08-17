@@ -4,6 +4,7 @@ import '../models/task_model.dart';
 import '../models/subtask_model.dart';
 import 'item_service.dart';
 import 'scoring_service.dart';
+import 'storage_service.dart';
 
 class TaskService {
   /// 获取任务详情，包含评分计算
@@ -22,11 +23,21 @@ class TaskService {
     }
   }
 
-  /// 获取所有任务列表（包含测试数据）
+  /// 获取所有任务列表（包含测试数据和存储的任务）
   static Future<List<Task>> getAllTasks() async {
     try {
-      // 返回一些测试数据用于演示
-      return _createTestTasks();
+      // 获取存储的任务
+      final storedTasks = await _getStoredTasks();
+
+      // 如果没有存储的任务，返回测试数据
+      if (storedTasks.isEmpty) {
+        final testTasks = _createTestTasks();
+        // 保存测试任务到存储
+        await _saveTasksToStorage(testTasks);
+        return testTasks;
+      }
+
+      return storedTasks;
     } catch (e) {
       print('获取任务列表失败: $e');
       return [];
@@ -41,10 +52,12 @@ class TaskService {
       Task(
         id: 'task_001',
         poolId: 'pool_001',
+        projectId: 'demo-project-001', // 添加项目ID
         title: '开发用户登录模块',
         description: '实现用户登录、注册和密码找回功能，包括前端UI和后端API',
         estimatedMinutes: 120,
         expectedAt: now.add(const Duration(days: 2)),
+        dueDate: now.add(const Duration(days: 3)), // 添加截止日期
         status: TaskStatus.pending,
         createdAt: now.subtract(const Duration(hours: 2)),
         statistics: const TaskStatistics(),
@@ -287,47 +300,53 @@ class TaskService {
     TaskLevel level = TaskLevel.task, // 新增：任务层级
   }) async {
     try {
-      // 转换为后端格式
-      String? itemId = await ItemService.createItem(
-        teamId: teamId,
-        content: title + (description != null ? '\n$description' : ''),
-        score: baseReward.toInt(),
-        shouldBeCompletedBy: expectedAt?.millisecondsSinceEpoch ??
-            DateTime.now()
-                .add(Duration(minutes: estimatedMinutes))
-                .millisecondsSinceEpoch,
+      // 生成任务ID
+      final taskId = 'task_${DateTime.now().millisecondsSinceEpoch}';
+
+      // 创建带有层级信息的任务对象
+      final task = Task(
+        id: taskId,
+        poolId: teamId,
+        title: title,
+        description: description,
+        estimatedMinutes: estimatedMinutes,
+        expectedAt: expectedAt ??
+            DateTime.now().add(Duration(minutes: estimatedMinutes)),
+        status: TaskStatus.pending,
+        createdAt: DateTime.now(),
+        statistics: const TaskStatistics(),
+        priority: priority,
+        baseReward: baseReward,
+        tags: tags,
+        assignedUsers: assignedUsers,
+        level: level, // 设置任务层级
+        parentTaskId: parentTaskId, // 设置父任务ID
+        childTaskIds: const [],
       );
 
-      if (itemId != null) {
-        // 创建带有层级信息的任务对象
-        final task = Task(
-          id: itemId,
-          poolId: teamId,
-          title: title,
-          description: description,
-          estimatedMinutes: estimatedMinutes,
-          expectedAt: expectedAt ??
-              DateTime.now().add(Duration(minutes: estimatedMinutes)),
-          status: TaskStatus.pending,
-          createdAt: DateTime.now(),
-          statistics: const TaskStatistics(),
-          priority: priority,
-          baseReward: baseReward,
-          tags: tags,
-          assignedUsers: assignedUsers,
-          level: level, // 设置任务层级
-          parentTaskId: parentTaskId, // 设置父任务ID
-          childTaskIds: const [],
+      // 保存到本地存储
+      await _addTaskToStorage(task);
+
+      // 尝试调用后端API（可选）
+      try {
+        await ItemService.createItem(
+          teamId: teamId,
+          content: title + (description != null ? '\n$description' : ''),
+          score: baseReward.toInt(),
+          shouldBeCompletedBy: (expectedAt ??
+                  DateTime.now().add(Duration(minutes: estimatedMinutes)))
+              .millisecondsSinceEpoch,
         );
-
-        // 如果有父任务，更新父任务的子任务列表
-        if (parentTaskId != null) {
-          await _addChildTaskToParent(parentTaskId, itemId);
-        }
-
-        return task;
+      } catch (e) {
+        print('后端API调用失败，任务仅保存在本地: $e');
       }
-      return null;
+
+      // 如果有父任务，更新父任务的子任务列表
+      if (parentTaskId != null) {
+        await _addChildTaskToParent(parentTaskId, taskId);
+      }
+
+      return task;
     } catch (e) {
       print('创建任务失败: $e');
       return null;
@@ -346,27 +365,51 @@ class TaskService {
     String? blockNote,
   }) async {
     try {
-      bool success = false;
+      // 从存储中获取现有任务
+      final storedTasks = await _getStoredTasks();
+      final taskIndex = storedTasks.indexWhere((t) => t.id == taskId);
 
-      // 根据状态更新后端数据
-      if (status == TaskStatus.completed) {
-        success = await ItemService.completeItem(
-          teamId: teamId,
-          itemId: int.parse(taskId),
-          completedBy: assigneeId != null ? int.parse(assigneeId) : 0,
-        );
-      } else {
-        success = await ItemService.updateItem(
-          teamId: teamId,
-          itemId: int.parse(taskId),
-          // 这里可能需要扩展后端API支持更多状态
-        );
+      if (taskIndex == -1) {
+        print('任务不存在: $taskId');
+        return null;
       }
 
-      if (success) {
-        return await getTask(taskId);
+      final originalTask = storedTasks[taskIndex];
+
+      // 更新任务状态
+      final updatedTask = originalTask.copyWith(
+        status: status,
+        assigneeId: assigneeId,
+        startedAt: startedAt,
+        completedAt: completedAt,
+        blockReason: blockReason,
+        blockNote: blockNote,
+      );
+
+      // 更新存储
+      storedTasks[taskIndex] = updatedTask;
+      await _saveTasksToStorage(storedTasks);
+
+      // 尝试更新后端（可选）
+      try {
+        if (status == TaskStatus.completed) {
+          await ItemService.completeItem(
+            teamId: teamId,
+            itemId: int.tryParse(taskId) ?? 0,
+            completedBy:
+                assigneeId != null ? (int.tryParse(assigneeId) ?? 0) : 0,
+          );
+        } else {
+          await ItemService.updateItem(
+            teamId: teamId,
+            itemId: int.tryParse(taskId) ?? 0,
+          );
+        }
+      } catch (e) {
+        print('后端更新失败，任务状态仅在本地更新: $e');
       }
-      return null;
+
+      return updatedTask;
     } catch (e) {
       print('更新任务状态失败: $e');
       return null;
@@ -715,6 +758,798 @@ class TaskService {
     } catch (e) {
       print('获取团队任务失败: $e');
       return [];
+    }
+  }
+
+  /// 获取指定任务的子任务列表
+  static Future<List<Task>> getChildTasks(String parentTaskId) async {
+    try {
+      final allTasks = await getAllTasks();
+      return allTasks
+          .where((task) => task.parentTaskId == parentTaskId)
+          .toList()
+        ..sort((a, b) => a.createdAt.compareTo(b.createdAt)); // 按创建时间排序
+    } catch (e) {
+      print('获取子任务失败: $e');
+      return [];
+    }
+  }
+
+  /// 获取任务的完成统计信息
+  static Future<Map<String, int>> getTaskCompletionStats(String taskId) async {
+    try {
+      final childTasks = await getChildTasks(taskId);
+
+      if (childTasks.isEmpty) {
+        // 如果没有子任务，返回当前任务的状态
+        final task = await getTaskById(taskId);
+        if (task != null) {
+          return {
+            'total': 1,
+            'completed': task.status == TaskStatus.completed ? 1 : 0,
+            'inProgress': task.status == TaskStatus.inProgress ? 1 : 0,
+            'pending': task.status == TaskStatus.pending ? 1 : 0,
+            'blocked': task.status == TaskStatus.blocked ? 1 : 0,
+          };
+        }
+        return {
+          'total': 0,
+          'completed': 0,
+          'inProgress': 0,
+          'pending': 0,
+          'blocked': 0
+        };
+      }
+
+      int total = childTasks.length;
+      int completed = childTasks
+          .where((task) => task.status == TaskStatus.completed)
+          .length;
+      int inProgress = childTasks
+          .where((task) => task.status == TaskStatus.inProgress)
+          .length;
+      int pending =
+          childTasks.where((task) => task.status == TaskStatus.pending).length;
+      int blocked =
+          childTasks.where((task) => task.status == TaskStatus.blocked).length;
+
+      return {
+        'total': total,
+        'completed': completed,
+        'inProgress': inProgress,
+        'pending': pending,
+        'blocked': blocked,
+      };
+    } catch (e) {
+      print('获取任务完成统计失败: $e');
+      return {
+        'total': 0,
+        'completed': 0,
+        'inProgress': 0,
+        'pending': 0,
+        'blocked': 0
+      };
+    }
+  }
+
+  /// 根据任务ID获取单个任务
+  static Future<Task?> getTaskById(String taskId) async {
+    try {
+      final allTasks = await getAllTasks();
+      return allTasks.firstWhere((task) => task.id == taskId);
+    } catch (e) {
+      print('获取任务失败: $e');
+      return null;
+    }
+  }
+
+  /// 从存储中获取任务列表
+  static Future<List<Task>> _getStoredTasks() async {
+    try {
+      final storageService = StorageService();
+      final taskDataList = await storageService.getData('tasks');
+      if (taskDataList == null) return [];
+
+      if (taskDataList is List) {
+        return taskDataList
+            .map((taskData) => Task.fromJson(taskData as Map<String, dynamic>))
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      print('从存储获取任务失败: $e');
+      return [];
+    }
+  }
+
+  /// 保存任务列表到存储
+  static Future<void> _saveTasksToStorage(List<Task> tasks) async {
+    try {
+      final storageService = StorageService();
+      final taskDataList = tasks.map((task) => task.toJson()).toList();
+      await storageService.saveData('tasks', taskDataList);
+    } catch (e) {
+      print('保存任务到存储失败: $e');
+    }
+  }
+
+  /// 添加新任务到存储
+  static Future<void> _addTaskToStorage(Task task) async {
+    try {
+      final storedTasks = await _getStoredTasks();
+      storedTasks.add(task);
+      await _saveTasksToStorage(storedTasks);
+    } catch (e) {
+      print('添加任务到存储失败: $e');
+    }
+  }
+
+  // ======================== 工作流相关方法 ========================
+
+  /// 更新任务工作流状态
+  static Future<void> updateTaskWorkflowStatus(
+      String taskId, WorkflowStatus status) async {
+    try {
+      final storedTasks = await _getStoredTasks();
+      final taskIndex = storedTasks.indexWhere((t) => t.id == taskId);
+
+      if (taskIndex != -1) {
+        final task = storedTasks[taskIndex];
+        final updatedTask = Task(
+          id: task.id,
+          poolId: task.poolId,
+          title: task.title,
+          description: task.description,
+          estimatedMinutes: task.estimatedMinutes,
+          expectedAt: task.expectedAt,
+          status: task.status,
+          assigneeId: task.assigneeId,
+          startedAt: task.startedAt,
+          completedAt: task.completedAt,
+          blockReason: task.blockReason,
+          blockNote: task.blockNote,
+          createdAt: task.createdAt,
+          statistics: task.statistics,
+          keyNodes: task.keyNodes,
+          subTasks: task.subTasks,
+          priority: task.priority,
+          baseReward: task.baseReward,
+          assignedUsers: task.assignedUsers,
+          tags: task.tags,
+          requiredSkills: task.requiredSkills,
+          createdBy: task.createdBy,
+          difficulty: task.difficulty,
+          milestones: task.milestones,
+          isTeamTask: task.isTeamTask,
+          maxAssignees: task.maxAssignees,
+          level: task.level,
+          parentTaskId: task.parentTaskId,
+          childTaskIds: task.childTaskIds,
+          fromTemplate: task.fromTemplate,
+          creationMethod: task.creationMethod,
+          templateParams: task.templateParams,
+          prerequisiteTasks: task.prerequisiteTasks,
+          dependentTasks: task.dependentTasks,
+          workflowStatus: status, // 更新工作流状态
+          submissions: task.submissions,
+          reviewStatus: task.reviewStatus,
+          reviewerId: task.reviewerId,
+          reviewComment: task.reviewComment,
+          reviewedAt: task.reviewedAt,
+          taskPoints: task.taskPoints,
+        );
+
+        storedTasks[taskIndex] = updatedTask;
+        await _saveTasksToStorage(storedTasks);
+      }
+    } catch (e) {
+      print('更新任务工作流状态失败: $e');
+    }
+  }
+
+  /// 添加任务前置依赖
+  static Future<void> addTaskPrerequisite(
+      String taskId, String prerequisiteTaskId) async {
+    try {
+      final storedTasks = await _getStoredTasks();
+      final taskIndex = storedTasks.indexWhere((t) => t.id == taskId);
+
+      if (taskIndex != -1) {
+        final task = storedTasks[taskIndex];
+        final updatedPrerequisites = [...task.prerequisiteTasks];
+        if (!updatedPrerequisites.contains(prerequisiteTaskId)) {
+          updatedPrerequisites.add(prerequisiteTaskId);
+        }
+
+        final updatedTask = Task(
+          id: task.id,
+          poolId: task.poolId,
+          title: task.title,
+          description: task.description,
+          estimatedMinutes: task.estimatedMinutes,
+          expectedAt: task.expectedAt,
+          status: task.status,
+          assigneeId: task.assigneeId,
+          startedAt: task.startedAt,
+          completedAt: task.completedAt,
+          blockReason: task.blockReason,
+          blockNote: task.blockNote,
+          createdAt: task.createdAt,
+          statistics: task.statistics,
+          keyNodes: task.keyNodes,
+          subTasks: task.subTasks,
+          priority: task.priority,
+          baseReward: task.baseReward,
+          assignedUsers: task.assignedUsers,
+          tags: task.tags,
+          requiredSkills: task.requiredSkills,
+          createdBy: task.createdBy,
+          difficulty: task.difficulty,
+          milestones: task.milestones,
+          isTeamTask: task.isTeamTask,
+          maxAssignees: task.maxAssignees,
+          level: task.level,
+          parentTaskId: task.parentTaskId,
+          childTaskIds: task.childTaskIds,
+          fromTemplate: task.fromTemplate,
+          creationMethod: task.creationMethod,
+          templateParams: task.templateParams,
+          prerequisiteTasks: updatedPrerequisites,
+          dependentTasks: task.dependentTasks,
+          workflowStatus: task.workflowStatus,
+          submissions: task.submissions,
+          reviewStatus: task.reviewStatus,
+          reviewerId: task.reviewerId,
+          reviewComment: task.reviewComment,
+          reviewedAt: task.reviewedAt,
+          taskPoints: task.taskPoints,
+        );
+
+        storedTasks[taskIndex] = updatedTask;
+        await _saveTasksToStorage(storedTasks);
+      }
+    } catch (e) {
+      print('添加任务前置依赖失败: $e');
+    }
+  }
+
+  /// 添加任务后置依赖
+  static Future<void> addTaskDependent(
+      String taskId, String dependentTaskId) async {
+    try {
+      final storedTasks = await _getStoredTasks();
+      final taskIndex = storedTasks.indexWhere((t) => t.id == taskId);
+
+      if (taskIndex != -1) {
+        final task = storedTasks[taskIndex];
+        final updatedDependents = [...task.dependentTasks];
+        if (!updatedDependents.contains(dependentTaskId)) {
+          updatedDependents.add(dependentTaskId);
+        }
+
+        final updatedTask = Task(
+          id: task.id,
+          poolId: task.poolId,
+          title: task.title,
+          description: task.description,
+          estimatedMinutes: task.estimatedMinutes,
+          expectedAt: task.expectedAt,
+          status: task.status,
+          assigneeId: task.assigneeId,
+          startedAt: task.startedAt,
+          completedAt: task.completedAt,
+          blockReason: task.blockReason,
+          blockNote: task.blockNote,
+          createdAt: task.createdAt,
+          statistics: task.statistics,
+          keyNodes: task.keyNodes,
+          subTasks: task.subTasks,
+          priority: task.priority,
+          baseReward: task.baseReward,
+          assignedUsers: task.assignedUsers,
+          tags: task.tags,
+          requiredSkills: task.requiredSkills,
+          createdBy: task.createdBy,
+          difficulty: task.difficulty,
+          milestones: task.milestones,
+          isTeamTask: task.isTeamTask,
+          maxAssignees: task.maxAssignees,
+          level: task.level,
+          parentTaskId: task.parentTaskId,
+          childTaskIds: task.childTaskIds,
+          fromTemplate: task.fromTemplate,
+          creationMethod: task.creationMethod,
+          templateParams: task.templateParams,
+          prerequisiteTasks: task.prerequisiteTasks,
+          dependentTasks: updatedDependents,
+          workflowStatus: task.workflowStatus,
+          submissions: task.submissions,
+          reviewStatus: task.reviewStatus,
+          reviewerId: task.reviewerId,
+          reviewComment: task.reviewComment,
+          reviewedAt: task.reviewedAt,
+          taskPoints: task.taskPoints,
+        );
+
+        storedTasks[taskIndex] = updatedTask;
+        await _saveTasksToStorage(storedTasks);
+      }
+    } catch (e) {
+      print('添加任务后置依赖失败: $e');
+    }
+  }
+
+  /// 更新任务审核状态
+  static Future<void> updateTaskReviewStatus(
+      String taskId, TaskReviewStatus status) async {
+    try {
+      final storedTasks = await _getStoredTasks();
+      final taskIndex = storedTasks.indexWhere((t) => t.id == taskId);
+
+      if (taskIndex != -1) {
+        final task = storedTasks[taskIndex];
+        final updatedTask = Task(
+          id: task.id,
+          poolId: task.poolId,
+          title: task.title,
+          description: task.description,
+          estimatedMinutes: task.estimatedMinutes,
+          expectedAt: task.expectedAt,
+          status: task.status,
+          assigneeId: task.assigneeId,
+          startedAt: task.startedAt,
+          completedAt: task.completedAt,
+          blockReason: task.blockReason,
+          blockNote: task.blockNote,
+          createdAt: task.createdAt,
+          statistics: task.statistics,
+          keyNodes: task.keyNodes,
+          subTasks: task.subTasks,
+          priority: task.priority,
+          baseReward: task.baseReward,
+          assignedUsers: task.assignedUsers,
+          tags: task.tags,
+          requiredSkills: task.requiredSkills,
+          createdBy: task.createdBy,
+          difficulty: task.difficulty,
+          milestones: task.milestones,
+          isTeamTask: task.isTeamTask,
+          maxAssignees: task.maxAssignees,
+          level: task.level,
+          parentTaskId: task.parentTaskId,
+          childTaskIds: task.childTaskIds,
+          fromTemplate: task.fromTemplate,
+          creationMethod: task.creationMethod,
+          templateParams: task.templateParams,
+          prerequisiteTasks: task.prerequisiteTasks,
+          dependentTasks: task.dependentTasks,
+          workflowStatus: task.workflowStatus,
+          submissions: task.submissions,
+          reviewStatus: status, // 更新审核状态
+          reviewerId: task.reviewerId,
+          reviewComment: task.reviewComment,
+          reviewedAt: task.reviewedAt,
+          taskPoints: task.taskPoints,
+        );
+
+        storedTasks[taskIndex] = updatedTask;
+        await _saveTasksToStorage(storedTasks);
+      }
+    } catch (e) {
+      print('更新任务审核状态失败: $e');
+    }
+  }
+
+  /// 添加任务提交记录
+  static Future<void> addTaskSubmission(
+      String taskId, TaskSubmission submission) async {
+    try {
+      final storedTasks = await _getStoredTasks();
+      final taskIndex = storedTasks.indexWhere((t) => t.id == taskId);
+
+      if (taskIndex != -1) {
+        final task = storedTasks[taskIndex];
+        final updatedSubmissions = [...task.submissions, submission];
+
+        final updatedTask = Task(
+          id: task.id,
+          poolId: task.poolId,
+          title: task.title,
+          description: task.description,
+          estimatedMinutes: task.estimatedMinutes,
+          expectedAt: task.expectedAt,
+          status: task.status,
+          assigneeId: task.assigneeId,
+          startedAt: task.startedAt,
+          completedAt: task.completedAt,
+          blockReason: task.blockReason,
+          blockNote: task.blockNote,
+          createdAt: task.createdAt,
+          statistics: task.statistics,
+          keyNodes: task.keyNodes,
+          subTasks: task.subTasks,
+          priority: task.priority,
+          baseReward: task.baseReward,
+          assignedUsers: task.assignedUsers,
+          tags: task.tags,
+          requiredSkills: task.requiredSkills,
+          createdBy: task.createdBy,
+          difficulty: task.difficulty,
+          milestones: task.milestones,
+          isTeamTask: task.isTeamTask,
+          maxAssignees: task.maxAssignees,
+          level: task.level,
+          parentTaskId: task.parentTaskId,
+          childTaskIds: task.childTaskIds,
+          fromTemplate: task.fromTemplate,
+          creationMethod: task.creationMethod,
+          templateParams: task.templateParams,
+          prerequisiteTasks: task.prerequisiteTasks,
+          dependentTasks: task.dependentTasks,
+          workflowStatus: task.workflowStatus,
+          submissions: updatedSubmissions,
+          reviewStatus: task.reviewStatus,
+          reviewerId: task.reviewerId,
+          reviewComment: task.reviewComment,
+          reviewedAt: task.reviewedAt,
+          taskPoints: task.taskPoints,
+        );
+
+        storedTasks[taskIndex] = updatedTask;
+        await _saveTasksToStorage(storedTasks);
+      }
+    } catch (e) {
+      print('添加任务提交记录失败: $e');
+    }
+  }
+
+  /// 获取任务提交记录
+  static Future<TaskSubmission?> getTaskSubmission(String submissionId) async {
+    try {
+      final storedTasks = await _getStoredTasks();
+
+      for (final task in storedTasks) {
+        for (final submission in task.submissions) {
+          if (submission.id == submissionId) {
+            return submission;
+          }
+        }
+      }
+
+      return null;
+    } catch (e) {
+      print('获取任务提交记录失败: $e');
+      return null;
+    }
+  }
+
+  /// 获取任务的所有提交记录
+  static Future<List<TaskSubmission>> getTaskSubmissions(String taskId) async {
+    try {
+      final task = await getTaskById(taskId);
+      return task?.submissions ?? [];
+    } catch (e) {
+      print('获取任务提交记录列表失败: $e');
+      return [];
+    }
+  }
+
+  /// 更新任务提交状态
+  static Future<void> updateTaskSubmissionStatus({
+    required String submissionId,
+    required TaskSubmissionStatus status,
+    String? reviewComment,
+    String? reviewerId,
+  }) async {
+    try {
+      final storedTasks = await _getStoredTasks();
+      bool found = false;
+
+      for (int taskIndex = 0; taskIndex < storedTasks.length; taskIndex++) {
+        final task = storedTasks[taskIndex];
+        final updatedSubmissions = <TaskSubmission>[];
+
+        for (final submission in task.submissions) {
+          if (submission.id == submissionId) {
+            found = true;
+            // 创建更新后的提交记录
+            final updatedSubmission = TaskSubmission(
+              id: submission.id,
+              taskId: submission.taskId,
+              submitterId: submission.submitterId,
+              submitterName: submission.submitterName,
+              submittedAt: submission.submittedAt,
+              content: submission.content,
+              attachments: submission.attachments,
+              type: submission.type,
+              status: status,
+              reviewComment: reviewComment ?? submission.reviewComment,
+              reviewedAt: DateTime.now(),
+              reviewerId: reviewerId ?? submission.reviewerId,
+            );
+            updatedSubmissions.add(updatedSubmission);
+          } else {
+            updatedSubmissions.add(submission);
+          }
+        }
+
+        if (found) {
+          final updatedTask = Task(
+            id: task.id,
+            poolId: task.poolId,
+            title: task.title,
+            description: task.description,
+            estimatedMinutes: task.estimatedMinutes,
+            expectedAt: task.expectedAt,
+            status: task.status,
+            assigneeId: task.assigneeId,
+            startedAt: task.startedAt,
+            completedAt: task.completedAt,
+            blockReason: task.blockReason,
+            blockNote: task.blockNote,
+            createdAt: task.createdAt,
+            statistics: task.statistics,
+            keyNodes: task.keyNodes,
+            subTasks: task.subTasks,
+            priority: task.priority,
+            baseReward: task.baseReward,
+            assignedUsers: task.assignedUsers,
+            tags: task.tags,
+            requiredSkills: task.requiredSkills,
+            createdBy: task.createdBy,
+            difficulty: task.difficulty,
+            milestones: task.milestones,
+            isTeamTask: task.isTeamTask,
+            maxAssignees: task.maxAssignees,
+            level: task.level,
+            parentTaskId: task.parentTaskId,
+            childTaskIds: task.childTaskIds,
+            fromTemplate: task.fromTemplate,
+            creationMethod: task.creationMethod,
+            templateParams: task.templateParams,
+            prerequisiteTasks: task.prerequisiteTasks,
+            dependentTasks: task.dependentTasks,
+            workflowStatus: task.workflowStatus,
+            submissions: updatedSubmissions,
+            reviewStatus: task.reviewStatus,
+            reviewerId: task.reviewerId,
+            reviewComment: task.reviewComment,
+            reviewedAt: task.reviewedAt,
+            taskPoints: task.taskPoints,
+          );
+
+          storedTasks[taskIndex] = updatedTask;
+          await _saveTasksToStorage(storedTasks);
+          break;
+        }
+      }
+    } catch (e) {
+      print('更新任务提交状态失败: $e');
+    }
+  }
+
+  /// 添加任务点
+  static Future<void> addTaskPoint(String taskId, TaskPoint taskPoint) async {
+    try {
+      final storedTasks = await _getStoredTasks();
+      final taskIndex = storedTasks.indexWhere((t) => t.id == taskId);
+
+      if (taskIndex != -1) {
+        final task = storedTasks[taskIndex];
+        final updatedTaskPoints = [...task.taskPoints, taskPoint];
+
+        final updatedTask = Task(
+          id: task.id,
+          poolId: task.poolId,
+          title: task.title,
+          description: task.description,
+          estimatedMinutes: task.estimatedMinutes,
+          expectedAt: task.expectedAt,
+          status: task.status,
+          assigneeId: task.assigneeId,
+          startedAt: task.startedAt,
+          completedAt: task.completedAt,
+          blockReason: task.blockReason,
+          blockNote: task.blockNote,
+          createdAt: task.createdAt,
+          statistics: task.statistics,
+          keyNodes: task.keyNodes,
+          subTasks: task.subTasks,
+          priority: task.priority,
+          baseReward: task.baseReward,
+          assignedUsers: task.assignedUsers,
+          tags: task.tags,
+          requiredSkills: task.requiredSkills,
+          createdBy: task.createdBy,
+          difficulty: task.difficulty,
+          milestones: task.milestones,
+          isTeamTask: task.isTeamTask,
+          maxAssignees: task.maxAssignees,
+          level: task.level,
+          parentTaskId: task.parentTaskId,
+          childTaskIds: task.childTaskIds,
+          fromTemplate: task.fromTemplate,
+          creationMethod: task.creationMethod,
+          templateParams: task.templateParams,
+          prerequisiteTasks: task.prerequisiteTasks,
+          dependentTasks: task.dependentTasks,
+          workflowStatus: task.workflowStatus,
+          submissions: task.submissions,
+          reviewStatus: task.reviewStatus,
+          reviewerId: task.reviewerId,
+          reviewComment: task.reviewComment,
+          reviewedAt: task.reviewedAt,
+          taskPoints: updatedTaskPoints,
+        );
+
+        storedTasks[taskIndex] = updatedTask;
+        await _saveTasksToStorage(storedTasks);
+      }
+    } catch (e) {
+      print('添加任务点失败: $e');
+    }
+  }
+
+  /// 更新任务点状态
+  static Future<bool> updateTaskPointStatus(
+      String taskPointId, TaskPointStatus status) async {
+    try {
+      final storedTasks = await _getStoredTasks();
+
+      for (int taskIndex = 0; taskIndex < storedTasks.length; taskIndex++) {
+        final task = storedTasks[taskIndex];
+        final updatedTaskPoints = <TaskPoint>[];
+        bool found = false;
+
+        for (final taskPoint in task.taskPoints) {
+          if (taskPoint.id == taskPointId) {
+            found = true;
+            final updatedTaskPoint = TaskPoint(
+              id: taskPoint.id,
+              taskId: taskPoint.taskId,
+              title: taskPoint.title,
+              description: taskPoint.description,
+              estimatedMinutes: taskPoint.estimatedMinutes,
+              status: status,
+              assigneeId: taskPoint.assigneeId,
+              completedAt: status == TaskPointStatus.completed
+                  ? DateTime.now()
+                  : taskPoint.completedAt,
+              createdAt: taskPoint.createdAt,
+              order: taskPoint.order,
+              isRequired: taskPoint.isRequired,
+              weight: taskPoint.weight,
+            );
+            updatedTaskPoints.add(updatedTaskPoint);
+          } else {
+            updatedTaskPoints.add(taskPoint);
+          }
+        }
+
+        if (found) {
+          final updatedTask = Task(
+            id: task.id,
+            poolId: task.poolId,
+            title: task.title,
+            description: task.description,
+            estimatedMinutes: task.estimatedMinutes,
+            expectedAt: task.expectedAt,
+            status: task.status,
+            assigneeId: task.assigneeId,
+            startedAt: task.startedAt,
+            completedAt: task.completedAt,
+            blockReason: task.blockReason,
+            blockNote: task.blockNote,
+            createdAt: task.createdAt,
+            statistics: task.statistics,
+            keyNodes: task.keyNodes,
+            subTasks: task.subTasks,
+            priority: task.priority,
+            baseReward: task.baseReward,
+            assignedUsers: task.assignedUsers,
+            tags: task.tags,
+            requiredSkills: task.requiredSkills,
+            createdBy: task.createdBy,
+            difficulty: task.difficulty,
+            milestones: task.milestones,
+            isTeamTask: task.isTeamTask,
+            maxAssignees: task.maxAssignees,
+            level: task.level,
+            parentTaskId: task.parentTaskId,
+            childTaskIds: task.childTaskIds,
+            fromTemplate: task.fromTemplate,
+            creationMethod: task.creationMethod,
+            templateParams: task.templateParams,
+            prerequisiteTasks: task.prerequisiteTasks,
+            dependentTasks: task.dependentTasks,
+            workflowStatus: task.workflowStatus,
+            submissions: task.submissions,
+            reviewStatus: task.reviewStatus,
+            reviewerId: task.reviewerId,
+            reviewComment: task.reviewComment,
+            reviewedAt: task.reviewedAt,
+            taskPoints: updatedTaskPoints,
+          );
+
+          storedTasks[taskIndex] = updatedTask;
+          await _saveTasksToStorage(storedTasks);
+          return true;
+        }
+      }
+
+      return false;
+    } catch (e) {
+      print('更新任务点状态失败: $e');
+      return false;
+    }
+  }
+
+  // 获取项目任务列表
+  static Future<List<Task>> getProjectTasks(String projectId) async {
+    try {
+      // 暂时返回模拟数据，实际应该调用后端API
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      final now = DateTime.now();
+
+      return [
+        Task(
+          id: 'task_demo_001',
+          poolId: 'pool_001',
+          projectId: projectId,
+          title: '系统架构设计',
+          description: '设计整体系统架构，包括前端、后端和数据库结构',
+          status: TaskStatus.completed,
+          createdAt: now.subtract(const Duration(days: 10)),
+          statistics: const TaskStatistics(),
+          priority: TaskPriority.high,
+          baseReward: 40.0,
+          expectedAt: now.subtract(const Duration(days: 5)),
+          dueDate: now.subtract(const Duration(days: 3)),
+          tags: ['架构', '设计'],
+          requiredSkills: ['系统设计'],
+          difficulty: TaskDifficulty.hard,
+          maxAssignees: 1,
+        ),
+        Task(
+          id: 'task_demo_002',
+          poolId: 'pool_001',
+          projectId: projectId,
+          title: '数据库设计',
+          description: '设计数据库表结构和关系',
+          status: TaskStatus.inProgress,
+          createdAt: now.subtract(const Duration(days: 8)),
+          statistics: const TaskStatistics(),
+          priority: TaskPriority.high,
+          baseReward: 30.0,
+          expectedAt: now.add(const Duration(days: 2)),
+          dueDate: now.add(const Duration(days: 3)),
+          tags: ['数据库', '设计'],
+          requiredSkills: ['SQL', '数据建模'],
+          difficulty: TaskDifficulty.medium,
+          maxAssignees: 2,
+        ),
+        Task(
+          id: 'task_demo_003',
+          poolId: 'pool_001',
+          projectId: projectId,
+          title: '前端页面开发',
+          description: '开发主要的前端页面和组件',
+          status: TaskStatus.pending,
+          createdAt: now.subtract(const Duration(days: 5)),
+          statistics: const TaskStatistics(),
+          priority: TaskPriority.medium,
+          baseReward: 35.0,
+          expectedAt: now.add(const Duration(days: 7)),
+          dueDate: now.add(const Duration(days: 10)),
+          tags: ['前端', 'UI'],
+          requiredSkills: ['Flutter', 'Dart'],
+          difficulty: TaskDifficulty.medium,
+          maxAssignees: 3,
+        ),
+      ];
+    } catch (e) {
+      throw Exception('获取项目任务失败: $e');
     }
   }
 }

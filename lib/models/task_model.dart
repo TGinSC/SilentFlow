@@ -5,10 +5,12 @@ import 'task_template_model.dart';
 class Task {
   final String id;
   final String poolId;
+  final String? projectId; // 添加项目ID字段
   final String title;
   final String? description;
   final int estimatedMinutes;
   final DateTime? expectedAt; // 预期完成时间
+  final DateTime? dueDate; // 截止日期
   final TaskStatus status;
   final String? assigneeId;
   final DateTime? startedAt;
@@ -31,20 +33,33 @@ class Task {
   final int maxAssignees; // 最大分配人数
 
   // 新增字段 - 统一任务概念
-  final TaskLevel level; // 任务层级（项目级/任务级）
+  final TaskLevel level; // 任务层级（项目级/任务级/任务点级）
   final String? parentTaskId; // 父任务ID（用于子任务）
   final List<String> childTaskIds; // 子任务ID列表
   final TaskTemplate? fromTemplate; // 来源模板
   final TaskCreationMethod creationMethod; // 创建方式
   final Map<String, dynamic> templateParams; // 模板参数
 
+  // 工作流相关字段
+  final List<String> prerequisiteTasks; // 前置任务ID列表
+  final List<String> dependentTasks; // 依赖此任务的后置任务ID列表
+  final WorkflowStatus workflowStatus; // 工作流状态
+  final List<TaskSubmission> submissions; // 任务提交记录
+  final TaskReviewStatus reviewStatus; // 审核状态
+  final String? reviewerId; // 审核人ID
+  final String? reviewComment; // 审核意见
+  final DateTime? reviewedAt; // 审核时间
+  final List<TaskPoint> taskPoints; // 任务点列表（仅对task级别有效）
+
   const Task({
     required this.id,
     required this.poolId,
+    this.projectId, // 添加到构造函数
     required this.title,
     this.description,
     this.estimatedMinutes = 30,
     this.expectedAt,
+    this.dueDate, // 添加到构造函数
     this.status = TaskStatus.pending,
     this.assigneeId,
     this.startedAt,
@@ -72,6 +87,16 @@ class Task {
     this.fromTemplate,
     this.creationMethod = TaskCreationMethod.custom,
     this.templateParams = const {},
+    // 工作流相关字段默认值
+    this.prerequisiteTasks = const [],
+    this.dependentTasks = const [],
+    this.workflowStatus = WorkflowStatus.ready,
+    this.submissions = const [],
+    this.reviewStatus = TaskReviewStatus.pending,
+    this.reviewerId,
+    this.reviewComment,
+    this.reviewedAt,
+    this.taskPoints = const [],
   });
 
   // 任务进度（基于子任务完成情况）
@@ -385,6 +410,22 @@ class Task {
 
 enum TaskStatus { pending, inProgress, completed, blocked }
 
+// TaskStatus 扩展
+extension TaskStatusExtension on TaskStatus {
+  String get displayName {
+    switch (this) {
+      case TaskStatus.pending:
+        return '待处理';
+      case TaskStatus.inProgress:
+        return '进行中';
+      case TaskStatus.completed:
+        return '已完成';
+      case TaskStatus.blocked:
+        return '被阻塞';
+    }
+  }
+}
+
 enum BlockReason { lackOfTools, needHelp, timeConflict, other }
 
 // 任务难度枚举
@@ -593,7 +634,7 @@ class TaskReward {
 enum TaskLevel {
   project, // 项目级
   task, // 任务级
-  subtask, // 子任务级
+  taskPoint, // 任务点级（最小执行单元）
 }
 
 // 任务创建方式
@@ -602,4 +643,181 @@ enum TaskCreationMethod {
   custom, // 自定义创建
   imported, // 导入创建
   cloned, // 克隆创建
+}
+
+// 工作流状态枚举
+enum WorkflowStatus {
+  ready, // 准备就绪（前置任务已完成）
+  waiting, // 等待中（前置任务未完成）
+  inProgress, // 进行中
+  reviewing, // 审核中
+  completed, // 已完成
+  blocked, // 被阻塞
+}
+
+// 审核状态枚举
+enum TaskReviewStatus {
+  pending, // 待审核
+  approved, // 审核通过
+  rejected, // 审核拒绝
+  needsRevision, // 需要修改
+}
+
+// 任务提交记录
+class TaskSubmission {
+  final String id;
+  final String taskId;
+  final String submitterId;
+  final String submitterName;
+  final DateTime submittedAt;
+  final String content; // 提交内容
+  final List<String> attachments; // 附件URL列表
+  final TaskSubmissionType type;
+  final TaskSubmissionStatus status;
+  final String? reviewComment; // 审核意见
+  final DateTime? reviewedAt;
+  final String? reviewerId;
+
+  const TaskSubmission({
+    required this.id,
+    required this.taskId,
+    required this.submitterId,
+    required this.submitterName,
+    required this.submittedAt,
+    required this.content,
+    this.attachments = const [],
+    required this.type,
+    this.status = TaskSubmissionStatus.submitted,
+    this.reviewComment,
+    this.reviewedAt,
+    this.reviewerId,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'taskId': taskId,
+      'submitterId': submitterId,
+      'submitterName': submitterName,
+      'submittedAt': submittedAt.toIso8601String(),
+      'content': content,
+      'attachments': attachments,
+      'type': type.name,
+      'status': status.name,
+      'reviewComment': reviewComment,
+      'reviewedAt': reviewedAt?.toIso8601String(),
+      'reviewerId': reviewerId,
+    };
+  }
+
+  factory TaskSubmission.fromJson(Map<String, dynamic> json) {
+    return TaskSubmission(
+      id: json['id'],
+      taskId: json['taskId'],
+      submitterId: json['submitterId'],
+      submitterName: json['submitterName'],
+      submittedAt: DateTime.parse(json['submittedAt']),
+      content: json['content'],
+      attachments: List<String>.from(json['attachments'] ?? []),
+      type: TaskSubmissionType.values.firstWhere((e) => e.name == json['type']),
+      status: TaskSubmissionStatus.values
+          .firstWhere((e) => e.name == json['status']),
+      reviewComment: json['reviewComment'],
+      reviewedAt: json['reviewedAt'] != null
+          ? DateTime.parse(json['reviewedAt'])
+          : null,
+      reviewerId: json['reviewerId'],
+    );
+  }
+}
+
+// 提交类型枚举
+enum TaskSubmissionType {
+  progress, // 进度提交
+  completion, // 完成提交
+  revision, // 修改提交
+}
+
+// 提交状态枚举
+enum TaskSubmissionStatus {
+  submitted, // 已提交
+  approved, // 已通过
+  rejected, // 已拒绝
+  needsRevision, // 需要修改
+}
+
+// 任务点（最小执行单元）
+class TaskPoint {
+  final String id;
+  final String taskId; // 所属任务ID
+  final String title;
+  final String? description;
+  final int estimatedMinutes;
+  final TaskPointStatus status;
+  final String? assigneeId;
+  final DateTime? completedAt;
+  final DateTime createdAt;
+  final int order; // 执行顺序
+  final bool isRequired; // 是否必需完成
+  final double weight; // 权重（用于进度计算）
+
+  const TaskPoint({
+    required this.id,
+    required this.taskId,
+    required this.title,
+    this.description,
+    required this.estimatedMinutes,
+    this.status = TaskPointStatus.pending,
+    this.assigneeId,
+    this.completedAt,
+    required this.createdAt,
+    this.order = 0,
+    this.isRequired = true,
+    this.weight = 1.0,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'taskId': taskId,
+      'title': title,
+      'description': description,
+      'estimatedMinutes': estimatedMinutes,
+      'status': status.name,
+      'assigneeId': assigneeId,
+      'completedAt': completedAt?.toIso8601String(),
+      'createdAt': createdAt.toIso8601String(),
+      'order': order,
+      'isRequired': isRequired,
+      'weight': weight,
+    };
+  }
+
+  factory TaskPoint.fromJson(Map<String, dynamic> json) {
+    return TaskPoint(
+      id: json['id'],
+      taskId: json['taskId'],
+      title: json['title'],
+      description: json['description'],
+      estimatedMinutes: json['estimatedMinutes'],
+      status:
+          TaskPointStatus.values.firstWhere((e) => e.name == json['status']),
+      assigneeId: json['assigneeId'],
+      completedAt: json['completedAt'] != null
+          ? DateTime.parse(json['completedAt'])
+          : null,
+      createdAt: DateTime.parse(json['createdAt']),
+      order: json['order'] ?? 0,
+      isRequired: json['isRequired'] ?? true,
+      weight: (json['weight'] ?? 1.0).toDouble(),
+    );
+  }
+}
+
+// 任务点状态枚举
+enum TaskPointStatus {
+  pending, // 待处理
+  inProgress, // 进行中
+  completed, // 已完成
+  skipped, // 已跳过（仅非必需项可跳过）
 }

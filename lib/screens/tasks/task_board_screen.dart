@@ -6,6 +6,8 @@ import '../../providers/team_pool_provider.dart';
 import '../../services/task_service.dart';
 import '../../services/team_pool_service.dart';
 import '../../widgets/task_creation_dialog.dart';
+import '../workflow/workflow_screen.dart';
+import 'task_detail_screen.dart';
 
 class TaskBoardScreen extends StatefulWidget {
   const TaskBoardScreen({super.key});
@@ -140,6 +142,11 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.account_tree),
+            tooltip: '工作流图',
+            onPressed: () => _navigateToWorkflowGraph(),
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadTasks,
           ),
@@ -209,62 +216,86 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
           ),
           const SizedBox(height: 12),
 
-          // 状态筛选
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                FilterChip(
-                  label: const Text('全部'),
-                  selected: _filterStatus == null,
-                  onSelected: (selected) {
-                    setState(() {
-                      _filterStatus = null;
-                    });
-                  },
+          // 状态筛选和快速工具
+          Row(
+            children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      FilterChip(
+                        label: const Text('全部'),
+                        selected: _filterStatus == null,
+                        onSelected: (selected) {
+                          setState(() {
+                            _filterStatus = null;
+                          });
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                      FilterChip(
+                        label: const Text('待处理'),
+                        selected: _filterStatus == TaskStatus.pending,
+                        onSelected: (selected) {
+                          setState(() {
+                            _filterStatus =
+                                selected ? TaskStatus.pending : null;
+                          });
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                      FilterChip(
+                        label: const Text('进行中'),
+                        selected: _filterStatus == TaskStatus.inProgress,
+                        onSelected: (selected) {
+                          setState(() {
+                            _filterStatus =
+                                selected ? TaskStatus.inProgress : null;
+                          });
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                      FilterChip(
+                        label: const Text('已完成'),
+                        selected: _filterStatus == TaskStatus.completed,
+                        onSelected: (selected) {
+                          setState(() {
+                            _filterStatus =
+                                selected ? TaskStatus.completed : null;
+                          });
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                      FilterChip(
+                        label: const Text('被阻塞'),
+                        selected: _filterStatus == TaskStatus.blocked,
+                        onSelected: (selected) {
+                          setState(() {
+                            _filterStatus =
+                                selected ? TaskStatus.blocked : null;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(width: 8),
-                FilterChip(
-                  label: const Text('待处理'),
-                  selected: _filterStatus == TaskStatus.pending,
-                  onSelected: (selected) {
-                    setState(() {
-                      _filterStatus = selected ? TaskStatus.pending : null;
-                    });
-                  },
+              ),
+              const SizedBox(width: 12),
+              // 工作流图快速访问按钮
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFF667eea).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                const SizedBox(width: 8),
-                FilterChip(
-                  label: const Text('进行中'),
-                  selected: _filterStatus == TaskStatus.inProgress,
-                  onSelected: (selected) {
-                    setState(() {
-                      _filterStatus = selected ? TaskStatus.inProgress : null;
-                    });
-                  },
+                child: IconButton(
+                  onPressed: _navigateToWorkflowGraph,
+                  icon: const Icon(Icons.account_tree),
+                  color: const Color(0xFF667eea),
+                  tooltip: '查看工作流图',
                 ),
-                const SizedBox(width: 8),
-                FilterChip(
-                  label: const Text('已完成'),
-                  selected: _filterStatus == TaskStatus.completed,
-                  onSelected: (selected) {
-                    setState(() {
-                      _filterStatus = selected ? TaskStatus.completed : null;
-                    });
-                  },
-                ),
-                const SizedBox(width: 8),
-                FilterChip(
-                  label: const Text('被阻塞'),
-                  selected: _filterStatus == TaskStatus.blocked,
-                  onSelected: (selected) {
-                    setState(() {
-                      _filterStatus = selected ? TaskStatus.blocked : null;
-                    });
-                  },
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ],
       ),
@@ -299,7 +330,8 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     final regularTasks = tasks
         .where((t) => t.level == TaskLevel.task && t.parentTaskId == null)
         .toList();
-    final subTasks = tasks.where((t) => t.level == TaskLevel.subtask).toList();
+    final taskPoints =
+        tasks.where((t) => t.level == TaskLevel.taskPoint).toList();
 
     return RefreshIndicator(
       onRefresh: _loadTasks,
@@ -320,12 +352,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
             const SizedBox(height: 16),
           ],
 
-          // 显示孤立的子任务（如果有的话）
-          if (subTasks
-              .any((st) => !tasks.any((t) => t.id == st.parentTaskId))) ...[
-            _buildSectionHeader('其他子任务'),
-            ...subTasks
-                .where((st) => !tasks.any((t) => t.id == st.parentTaskId))
+          // 显示孤立的任务点（如果有的话）
+          if (taskPoints
+              .any((tp) => !tasks.any((t) => t.id == tp.parentTaskId))) ...[
+            _buildSectionHeader('其他任务点'),
+            ...taskPoints
+                .where((tp) => !tasks.any((t) => t.id == tp.parentTaskId))
                 .map(
                     (task) => _buildTaskCard(task, isMyTasks, isSubTask: true)),
           ],
@@ -560,9 +592,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
         chipText = '任务';
         chipIcon = Icons.assignment;
         break;
-      case TaskLevel.subtask:
+      case TaskLevel.taskPoint:
         chipColor = colorScheme.tertiary;
-        chipText = '子任务';
+        chipText = '任务点';
         chipIcon = Icons.task_alt;
         break;
     }
@@ -786,35 +818,16 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   }
 
   void _showTaskDetails(Task task) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(task.title),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (task.description != null) ...[
-              Text('描述: ${task.description}'),
-              const SizedBox(height: 8),
-            ],
-            Text('状态: ${_getStatusText(task.status)}'),
-            Text('优先级: ${task.priority.displayName}'),
-            Text('预估时间: ${task.estimatedMinutes}分钟'),
-            Text(
-                '层级: ${task.level == TaskLevel.project ? "项目" : task.level == TaskLevel.task ? "任务" : "子任务"}'),
-            if (task.expectedAt != null)
-              Text('预期完成: ${_formatDate(task.expectedAt!)}'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('关闭'),
-          ),
-        ],
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TaskDetailScreen(task: task),
       ),
-    );
+    ).then((result) {
+      if (result == true) {
+        _loadTasks(); // 如果任务被修改或删除，重新加载任务列表
+      }
+    });
   }
 
   Future<void> _showCreateTaskDialog() async {
@@ -831,7 +844,28 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     }
   }
 
-  String _formatDate(DateTime date) {
-    return '${date.month}/${date.day} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+  void _navigateToWorkflowGraph() {
+    final teamPoolProvider = context.read<TeamPoolProvider>();
+
+    if (teamPoolProvider.teamPools.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('您还没有加入任何团队，请先创建或加入团队'),
+          backgroundColor: Color(0xFFED8936),
+        ),
+      );
+      return;
+    }
+
+    // 直接导航到工作流页面
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => WorkflowScreen(
+          teamId: teamPoolProvider.currentTeam?.id,
+          teamName: teamPoolProvider.currentTeam?.name,
+        ),
+      ),
+    );
   }
 }

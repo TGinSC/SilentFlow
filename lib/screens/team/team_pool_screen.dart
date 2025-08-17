@@ -5,9 +5,7 @@ import '../../models/task_model.dart' show TaskStatus;
 import '../../providers/app_provider.dart';
 import '../../providers/team_pool_provider.dart';
 import '../../widgets/team_creation_dialog.dart';
-// TODO: 创建这些界面文件
-// import 'join_team_screen.dart';
-// import 'team_detail_screen.dart';
+import 'team_detail_screen.dart';
 
 class TeamPoolScreen extends StatefulWidget {
   const TeamPoolScreen({super.key});
@@ -566,7 +564,7 @@ class _TeamPoolScreenState extends State<TeamPoolScreen>
         final myTeams = provider.getUserTeams(userId);
         final leadingTeams = provider.getUserLeadingTeams(userId);
 
-        return Padding(
+        return SingleChildScrollView(
           padding: const EdgeInsets.all(20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -645,15 +643,12 @@ class _TeamPoolScreenState extends State<TeamPoolScreen>
                   ),
                 ),
                 const SizedBox(height: 16),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: myTeams.length,
-                    itemBuilder: (context, index) {
-                      final team = myTeams[index];
-                      return _buildTeamStatsCard(team, userId);
-                    },
-                  ),
-                ),
+                ...myTeams
+                    .map((team) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _buildTeamStatsCard(team, userId),
+                        ))
+                    .toList(),
               ],
             ],
           ),
@@ -1261,15 +1256,11 @@ class _TeamPoolScreenState extends State<TeamPoolScreen>
   }
 
   void _navigateToTeamDetail(TeamPool team) {
-    // TODO: 实现团队详情界面
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('查看团队 "${team.name}" 详情功能即将上线')),
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => TeamDetailScreen(team: team),
+      ),
     );
-    // Navigator.of(context).push(
-    //   MaterialPageRoute(
-    //     builder: (context) => TeamDetailScreen(team: team),
-    //   ),
-    // );
   }
 
   void _joinTeam(TeamPool team) async {

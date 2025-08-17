@@ -43,7 +43,9 @@ class _TaskCreationDialogState extends State<TaskCreationDialog>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    // 如果是创建子任务，只显示自定义tab；否则显示两个tab
+    final tabCount = widget.parentTask != null ? 1 : 2;
+    _tabController = TabController(length: tabCount, vsync: this);
     _loadTaskTemplates();
   }
 
@@ -74,15 +76,18 @@ class _TaskCreationDialogState extends State<TaskCreationDialog>
           mainAxisSize: MainAxisSize.min,
           children: [
             _buildHeader(),
-            _buildTabBar(),
+            // 只有创建主任务时才显示 TabBar
+            if (widget.parentTask == null) _buildTabBar(),
             Flexible(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildTemplateTab(),
-                  _buildCustomTab(),
-                ],
-              ),
+              child: widget.parentTask != null
+                  ? _buildCustomTab() // 创建子任务时直接显示自定义表单
+                  : TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _buildTemplateTab(),
+                        _buildCustomTab(),
+                      ],
+                    ),
             ),
             _buildButtons(),
           ],
@@ -752,11 +757,14 @@ class _TaskCreationDialogState extends State<TaskCreationDialog>
 
       if (widget.parentTask != null) {
         parentTaskId = widget.parentTask!.id;
-        // 如果父任务是项目级，子任务是任务级；如果父任务是任务级，子任务是子任务级
+        // 如果父任务是项目级，子任务是任务级；如果父任务是任务级，子任务是任务点级
         taskLevel = widget.parentTask!.level == TaskLevel.project
             ? TaskLevel.task
-            : TaskLevel.subtask;
+            : TaskLevel.taskPoint;
       }
+
+      print(
+          '创建任务: 团队ID=$teamId, 标题=${_titleController.text.trim()}, 层级=$taskLevel');
 
       final task = await TaskService.createTask(
         teamId: teamId,
@@ -773,18 +781,20 @@ class _TaskCreationDialogState extends State<TaskCreationDialog>
       );
 
       if (task != null) {
+        print('任务创建成功: ${task.id}');
         Navigator.of(context).pop(true); // 返回 true 表示创建成功
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-                '${taskLevel == TaskLevel.subtask ? "子任务" : "任务"} "${task.title}" 创建成功'),
+                '${taskLevel == TaskLevel.taskPoint ? "任务点" : "任务"} "${task.title}" 创建成功'),
             backgroundColor: Colors.green,
           ),
         );
       } else {
-        throw Exception('创建任务失败');
+        throw Exception('创建任务失败 - 任务对象为null');
       }
     } catch (e) {
+      print('创建任务异常: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('创建任务失败: $e'),

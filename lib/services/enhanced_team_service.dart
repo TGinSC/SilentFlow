@@ -323,7 +323,7 @@ class TaskCreationService {
         teamId: projectTask.poolId,
         template: template,
         createdBy: projectTask.createdBy ?? '',
-        level: TaskLevel.subtask,
+        level: TaskLevel.taskPoint,
         parentTaskId: projectTask.id,
       );
 

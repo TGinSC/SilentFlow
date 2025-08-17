@@ -6,6 +6,7 @@ import '../widgets/team_creation_dialog.dart';
 import 'home/home_screen.dart';
 import 'team/team_pool_screen.dart';
 import 'tasks/task_board_screen.dart';
+import 'workflow/workflow_screen.dart';
 import 'profile/profile_screen.dart';
 
 class MainTabScreen extends StatefulWidget {
@@ -29,6 +30,7 @@ class _MainTabScreenState extends State<MainTabScreen> {
       const HomeScreen(),
       const TeamPoolScreen(),
       const TaskBoardScreen(),
+      const WorkflowScreen(),
       const ProfileScreen(),
     ];
 
@@ -183,8 +185,21 @@ class _MainTabScreenState extends State<MainTabScreen> {
               ),
               NavigationDestination(
                 icon: Icon(
-                  Icons.person_outline,
+                  Icons.account_tree_outlined,
                   color: _selectedIndex == 3
+                      ? Colors.indigo[700]
+                      : Colors.grey[600],
+                ),
+                selectedIcon: Icon(
+                  Icons.account_tree,
+                  color: Colors.indigo[700],
+                ),
+                label: '工作流图',
+              ),
+              NavigationDestination(
+                icon: Icon(
+                  Icons.person_outline,
+                  color: _selectedIndex == 4
                       ? Colors.indigo[700]
                       : Colors.grey[600],
                 ),
