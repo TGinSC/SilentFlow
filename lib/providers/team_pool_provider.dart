@@ -324,6 +324,31 @@ class TeamPoolProvider with ChangeNotifier {
     }
   }
 
+  // 删除团队
+  Future<bool> deleteTeam(String teamId) async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final success = await _teamPoolService.deleteTeam(teamId);
+
+      _isLoading = false;
+      notifyListeners();
+
+      if (!success) {
+        _error = '删除团队失败';
+      }
+
+      return success;
+    } catch (e) {
+      _error = '删除团队失败: $e';
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
   // 转移队长权限
   Future<bool> transferLeadership({
     required String teamId,

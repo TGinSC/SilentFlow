@@ -48,6 +48,13 @@ class SilentFlowApp extends StatelessWidget {
           ),
         ),
         home: const AppInitializer(),
+        routes: {
+          '/main': (context) {
+            final args = ModalRoute.of(context)?.settings.arguments;
+            return MainTabScreen(arguments: args);
+          },
+          '/login': (context) => const LoginScreen(),
+        },
         debugShowCheckedModeBanner: false,
       ),
     );

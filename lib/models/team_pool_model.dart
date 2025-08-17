@@ -1,4 +1,6 @@
 import 'task_model.dart';
+import 'team_template_model.dart';
+import 'tacit_understanding_model.dart';
 
 // 团队池模型 - 支持队长管理和任务模板
 class TeamPool {
@@ -19,6 +21,10 @@ class TeamPool {
   final String? teamAvatar; // 团队头像
   final List<String> tags; // 团队标签
   final TeamType teamType; // 团队类型
+  // 新增字段
+  final TeamTemplate? teamTemplate; // 团队模版
+  final TeamNature? teamNature; // 团队性质
+  final TeamTacitUnderstanding? teamTacitness; // 团队默契度
 
   const TeamPool({
     required this.id,
@@ -38,6 +44,10 @@ class TeamPool {
     this.teamAvatar,
     this.tags = const [],
     this.teamType = TeamType.project,
+    // 新增字段初始化
+    this.teamTemplate,
+    this.teamNature,
+    this.teamTacitness,
   });
 
   // 获取所有成员（包括队长）
@@ -396,25 +406,87 @@ class NotificationSettings {
   }
 }
 
-// 团队统计
+// 团队统计 - 重新设计为团队属性和人际属性
 class TeamStatistics {
+  // 团队属性
   final double teamEfficiency; // 团队效率
   final double averageTaskTime; // 平均任务时间
   final int totalTasksCompleted; // 总完成任务数
   final double onTimeCompletionRate; // 按时完成率
-  final Map<String, double> memberContributions; // 成员贡献度
   final DateTime? lastActivityAt; // 最后活跃时间
   final List<MilestoneRecord> milestones; // 里程碑记录
 
+  // 团队协作指标
+  final double teamCohesion; // 团队凝聚力
+  final double workflowEfficiency; // 工作流效率
+  final double communicationQuality; // 沟通质量
+  final double conflictResolutionRate; // 冲突解决率
+  final Map<String, double> skillCoverage; // 技能覆盖度
+
+  // 人际协作指标
+  final Map<String, double> memberContributions; // 成员贡献度
+  final Map<String, PairTacitUnderstanding> pairTacitness; // 成员间默契度
+  final Map<String, double> leadershipScores; // 领导力得分
+  final Map<String, List<String>> collaborationNetworks; // 协作网络
+
   const TeamStatistics({
+    // 基础团队指标
     this.teamEfficiency = 0.0,
     this.averageTaskTime = 0.0,
     this.totalTasksCompleted = 0,
     this.onTimeCompletionRate = 0.0,
-    this.memberContributions = const {},
     this.lastActivityAt,
     this.milestones = const [],
+
+    // 团队协作指标
+    this.teamCohesion = 0.0,
+    this.workflowEfficiency = 0.0,
+    this.communicationQuality = 0.0,
+    this.conflictResolutionRate = 0.0,
+    this.skillCoverage = const {},
+
+    // 人际协作指标
+    this.memberContributions = const {},
+    this.pairTacitness = const {},
+    this.leadershipScores = const {},
+    this.collaborationNetworks = const {},
   });
+
+  // 计算团队总体协作得分
+  double get overallCollaborationScore {
+    double teamScore = (teamCohesion +
+            workflowEfficiency +
+            communicationQuality +
+            conflictResolutionRate) /
+        4;
+    double pairScore = pairTacitness.values.isNotEmpty
+        ? pairTacitness.values
+                .map((p) => p.tacitScore)
+                .reduce((a, b) => a + b) /
+            pairTacitness.length
+        : 0.0;
+    return (teamScore + pairScore) / 2;
+  }
+
+  // 获取最佳协作对
+  List<String>? getBestCollaborationPair() {
+    if (pairTacitness.isEmpty) return null;
+
+    String bestPairKey = '';
+    double bestScore = 0.0;
+
+    pairTacitness.forEach((key, pair) {
+      if (pair.tacitScore > bestScore) {
+        bestScore = pair.tacitScore;
+        bestPairKey = key;
+      }
+    });
+
+    if (bestPairKey.isNotEmpty) {
+      return bestPairKey.split('_');
+    }
+    return null;
+  }
 
   factory TeamStatistics.fromJson(Map<String, dynamic> json) {
     return TeamStatistics(
@@ -422,9 +494,6 @@ class TeamStatistics {
       averageTaskTime: (json['averageTaskTime'] ?? 0.0).toDouble(),
       totalTasksCompleted: json['totalTasksCompleted'] ?? 0,
       onTimeCompletionRate: (json['onTimeCompletionRate'] ?? 0.0).toDouble(),
-      memberContributions: Map<String, double>.from(
-          (json['memberContributions'] ?? {})
-              .map((k, v) => MapEntry(k, v.toDouble()))),
       lastActivityAt: json['lastActivityAt'] != null
           ? DateTime.parse(json['lastActivityAt'])
           : null,
@@ -432,6 +501,27 @@ class TeamStatistics {
               ?.map((e) => MilestoneRecord.fromJson(e))
               .toList() ??
           [],
+      // 团队协作指标
+      teamCohesion: (json['teamCohesion'] ?? 0.0).toDouble(),
+      workflowEfficiency: (json['workflowEfficiency'] ?? 0.0).toDouble(),
+      communicationQuality: (json['communicationQuality'] ?? 0.0).toDouble(),
+      conflictResolutionRate:
+          (json['conflictResolutionRate'] ?? 0.0).toDouble(),
+      skillCoverage: Map<String, double>.from((json['skillCoverage'] ?? {})
+          .map((k, v) => MapEntry(k, v.toDouble()))),
+      // 人际协作指标
+      memberContributions: Map<String, double>.from(
+          (json['memberContributions'] ?? {})
+              .map((k, v) => MapEntry(k, v.toDouble()))),
+      pairTacitness: Map<String, PairTacitUnderstanding>.from(
+          (json['pairTacitness'] ?? {})
+              .map((k, v) => MapEntry(k, PairTacitUnderstanding.fromJson(v)))),
+      leadershipScores: Map<String, double>.from(
+          (json['leadershipScores'] ?? {})
+              .map((k, v) => MapEntry(k, v.toDouble()))),
+      collaborationNetworks: Map<String, List<String>>.from(
+          (json['collaborationNetworks'] ?? {})
+              .map((k, v) => MapEntry(k, List<String>.from(v)))),
     );
   }
 
@@ -441,9 +531,19 @@ class TeamStatistics {
       'averageTaskTime': averageTaskTime,
       'totalTasksCompleted': totalTasksCompleted,
       'onTimeCompletionRate': onTimeCompletionRate,
-      'memberContributions': memberContributions,
       'lastActivityAt': lastActivityAt?.toIso8601String(),
       'milestones': milestones.map((e) => e.toJson()).toList(),
+      // 团队协作指标
+      'teamCohesion': teamCohesion,
+      'workflowEfficiency': workflowEfficiency,
+      'communicationQuality': communicationQuality,
+      'conflictResolutionRate': conflictResolutionRate,
+      'skillCoverage': skillCoverage,
+      // 人际协作指标
+      'memberContributions': memberContributions,
+      'pairTacitness': pairTacitness.map((k, v) => MapEntry(k, v.toJson())),
+      'leadershipScores': leadershipScores,
+      'collaborationNetworks': collaborationNetworks,
     };
   }
 }

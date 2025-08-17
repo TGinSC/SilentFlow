@@ -4,8 +4,8 @@ import '../../models/team_pool_model.dart';
 import '../../models/task_model.dart' show TaskStatus;
 import '../../providers/app_provider.dart';
 import '../../providers/team_pool_provider.dart';
+import '../../widgets/team_creation_dialog.dart';
 // TODO: 创建这些界面文件
-// import 'create_team_screen.dart';
 // import 'join_team_screen.dart';
 // import 'team_detail_screen.dart';
 
@@ -714,6 +714,7 @@ class _TeamPoolScreenState extends State<TeamPoolScreen>
         color: Colors.transparent,
         child: InkWell(
           onTap: () => _navigateToTeamDetail(team),
+          onLongPress: isLeader ? () => _showTeamActions(team) : null,
           borderRadius: BorderRadius.circular(16),
           child: Padding(
             padding: const EdgeInsets.all(20),
@@ -776,6 +777,47 @@ class _TeamPoolScreenState extends State<TeamPoolScreen>
                         ],
                       ),
                     ),
+                    if (isLeader)
+                      PopupMenuButton<String>(
+                        onSelected: (value) => _handleTeamAction(team, value),
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                            value: 'edit',
+                            child: Row(
+                              children: [
+                                Icon(Icons.edit, size: 18),
+                                SizedBox(width: 8),
+                                Text('编辑团队'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'members',
+                            child: Row(
+                              children: [
+                                Icon(Icons.people, size: 18),
+                                SizedBox(width: 8),
+                                Text('管理成员'),
+                              ],
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: 'delete',
+                            child: Row(
+                              children: [
+                                Icon(Icons.delete, size: 18, color: Colors.red),
+                                SizedBox(width: 8),
+                                Text('删除团队',
+                                    style: TextStyle(color: Colors.red)),
+                              ],
+                            ),
+                          ),
+                        ],
+                        child: Icon(
+                          Icons.more_vert,
+                          color: Colors.grey[600],
+                        ),
+                      ),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -1197,15 +1239,13 @@ class _TeamPoolScreenState extends State<TeamPoolScreen>
   }
 
   void _navigateToCreateTeam({bool useTemplate = false}) {
-    // TODO: 实现创建团队界面
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('创建团队功能即将上线')),
+    // 显示团队创建对话框
+    showDialog(
+      context: context,
+      builder: (context) => TeamCreationDialog(
+        isCustomCreation: !useTemplate,
+      ),
     );
-    // Navigator.of(context).push(
-    //   MaterialPageRoute(
-    //     builder: (context) => CreateTeamScreen(useTemplate: useTemplate),
-    //   ),
-    // );
   }
 
   void _navigateToJoinTeam() {
@@ -1258,6 +1298,143 @@ class _TeamPoolScreenState extends State<TeamPoolScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(teamPoolProvider.error ?? '加入团队失败'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _showTeamActions(TeamPool team) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(20),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '管理团队 "${team.name}"',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 20),
+            ListTile(
+              leading: const Icon(Icons.edit),
+              title: const Text('编辑团队'),
+              onTap: () {
+                Navigator.pop(context);
+                _handleTeamAction(team, 'edit');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.people),
+              title: const Text('管理成员'),
+              onTap: () {
+                Navigator.pop(context);
+                _handleTeamAction(team, 'members');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete, color: Colors.red),
+              title: const Text('删除团队', style: TextStyle(color: Colors.red)),
+              onTap: () {
+                Navigator.pop(context);
+                _handleTeamAction(team, 'delete');
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _handleTeamAction(TeamPool team, String action) {
+    switch (action) {
+      case 'edit':
+        _editTeam(team);
+        break;
+      case 'members':
+        _manageMembers(team);
+        break;
+      case 'delete':
+        _deleteTeam(team);
+        break;
+    }
+  }
+
+  void _editTeam(TeamPool team) {
+    showDialog(
+      context: context,
+      builder: (context) => TeamCreationDialog(
+        isCustomCreation: true,
+        initialTemplate: {
+          'name': team.name,
+          'description': team.description,
+          'teamId': team.id,
+          'isEdit': true,
+        },
+      ),
+    );
+  }
+
+  void _manageMembers(TeamPool team) {
+    // TODO: 实现成员管理界面
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('成员管理功能即将上线')),
+    );
+  }
+
+  void _deleteTeam(TeamPool team) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除团队'),
+        content: Text('确定要删除团队 "${team.name}" 吗？\n\n此操作无法撤销，团队中的所有数据都将被删除。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+              await _confirmDeleteTeam(team);
+            },
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteTeam(TeamPool team) async {
+    final teamPoolProvider =
+        Provider.of<TeamPoolProvider>(context, listen: false);
+
+    final success = await teamPoolProvider.deleteTeam(team.id);
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('团队 "${team.name}" 已删除'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(teamPoolProvider.error ?? '删除团队失败'),
           backgroundColor: Colors.red,
         ),
       );

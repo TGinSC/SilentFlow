@@ -283,6 +283,8 @@ class TaskService {
     List<String> assignedUsers = const [],
     List<String> tags = const [],
     double baseReward = 10.0,
+    String? parentTaskId, // 新增：父任务ID
+    TaskLevel level = TaskLevel.task, // 新增：任务层级
   }) async {
     try {
       // 转换为后端格式
@@ -297,8 +299,33 @@ class TaskService {
       );
 
       if (itemId != null) {
-        // 获取创建的任务详情
-        return await getTask(itemId);
+        // 创建带有层级信息的任务对象
+        final task = Task(
+          id: itemId,
+          poolId: teamId,
+          title: title,
+          description: description,
+          estimatedMinutes: estimatedMinutes,
+          expectedAt: expectedAt ??
+              DateTime.now().add(Duration(minutes: estimatedMinutes)),
+          status: TaskStatus.pending,
+          createdAt: DateTime.now(),
+          statistics: const TaskStatistics(),
+          priority: priority,
+          baseReward: baseReward,
+          tags: tags,
+          assignedUsers: assignedUsers,
+          level: level, // 设置任务层级
+          parentTaskId: parentTaskId, // 设置父任务ID
+          childTaskIds: const [],
+        );
+
+        // 如果有父任务，更新父任务的子任务列表
+        if (parentTaskId != null) {
+          await _addChildTaskToParent(parentTaskId, itemId);
+        }
+
+        return task;
       }
       return null;
     } catch (e) {
@@ -658,6 +685,35 @@ class TaskService {
           .toList();
     } catch (e) {
       print('获取可认领任务失败: $e');
+      return [];
+    }
+  }
+
+  /// 将子任务添加到父任务的子任务列表中
+  static Future<void> _addChildTaskToParent(
+      String parentTaskId, String childTaskId) async {
+    try {
+      // 这里应该实现更新父任务的子任务列表的逻辑
+      // 由于目前的架构限制，我们先简单记录这个关系
+      // 在实际项目中，这应该更新数据库或存储系统
+      print('子任务 $childTaskId 已添加到父任务 $parentTaskId');
+    } catch (e) {
+      print('添加子任务到父任务失败: $e');
+    }
+  }
+
+  /// 获取指定团队的所有任务（不包括主项目）
+  static Future<List<Task>> getTeamTasks(String teamId) async {
+    try {
+      // 获取所有任务并筛选出指定团队的任务
+      final allTasks = await getAllTasks();
+      return allTasks
+          .where((task) =>
+              task.poolId == teamId &&
+              task.level != TaskLevel.project) // 排除主项目，主项目单独处理
+          .toList();
+    } catch (e) {
+      print('获取团队任务失败: $e');
       return [];
     }
   }

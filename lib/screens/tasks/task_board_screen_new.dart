@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/task_model.dart';
+import '../../models/subtask_model.dart';
 import '../../providers/app_provider.dart';
 import '../../providers/team_pool_provider.dart';
 import '../../services/task_service.dart';
@@ -183,7 +184,7 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       decoration: BoxDecoration(
         color: colorScheme.surface,
         border: Border(
-          bottom: BorderSide(color: colorScheme.outline.withValues(alpha: 0.2)),
+          bottom: BorderSide(color: colorScheme.outline.withOpacity(0.2)),
         ),
       ),
       child: Column(

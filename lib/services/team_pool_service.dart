@@ -131,6 +131,33 @@ class TeamPoolService {
 
     _teamPools.add(team);
 
+    // 自动创建团队的主项目任务
+    final mainProject = Task(
+      id: 'project_${DateTime.now().millisecondsSinceEpoch}',
+      poolId: teamId,
+      title: '${name}主项目',
+      description: description.isNotEmpty ? description : '${name}团队的主要项目任务',
+      estimatedMinutes: 480, // 默认8小时
+      expectedAt: DateTime.now().add(const Duration(days: 30)), // 默认30天完成
+      status: TaskStatus.pending,
+      createdAt: DateTime.now(),
+      statistics: const TaskStatistics(),
+      priority: TaskPriority.high,
+      baseReward: 100.0,
+      tags: ['主项目', ...tags],
+      requiredSkills: [],
+      difficulty: TaskDifficulty.medium,
+      maxAssignees: maxMembers,
+      isTeamTask: true,
+      subTasks: [],
+      keyNodes: [],
+      assignedUsers: [],
+      level: TaskLevel.project, // 设置为项目级别
+    );
+
+    // 保存主项目任务到任务存储中
+    await _saveMainProjectTask(mainProject);
+
     // 如果这是用户的第一个团队，设为当前团队
     if (_currentTeam == null) {
       _currentTeam = team;
@@ -577,6 +604,25 @@ class TeamPoolService {
     return true;
   }
 
+  // 删除团队（仅限队长）
+  Future<bool> deleteTeam(String teamId) async {
+    final teamIndex = _teamPools.indexWhere((pool) => pool.id == teamId);
+    if (teamIndex == -1) return false;
+
+    // 从列表中移除团队
+    _teamPools.removeAt(teamIndex);
+
+    // 如果删除的是当前团队，清空当前团队
+    if (_currentTeam?.id == teamId) {
+      _currentTeam = null;
+      await _saveCurrentTeam();
+    }
+
+    // 保存更新
+    await _saveTeamPools();
+    return true;
+  }
+
   // 转移队长权限
   Future<bool> transferLeadership({
     required String teamId,
@@ -649,6 +695,73 @@ class TeamPoolService {
             pool.description.toLowerCase().contains(lowercaseQuery) ||
             pool.tags.any((tag) => tag.toLowerCase().contains(lowercaseQuery)))
         .toList();
+  }
+
+  // 保存团队的主项目任务
+  Future<void> _saveMainProjectTask(Task mainProject) async {
+    try {
+      const String key = 'team_main_projects';
+      final storage = StorageService();
+
+      // 获取现有的主项目列表
+      final existingData = await storage.getData(key);
+      List<Map<String, dynamic>> projectsList = [];
+
+      if (existingData != null) {
+        projectsList = List<Map<String, dynamic>>.from(existingData);
+      }
+
+      // 添加新的主项目
+      projectsList.add(mainProject.toJson());
+
+      // 保存更新后的列表
+      await storage.saveData(key, projectsList);
+    } catch (e) {
+      print('保存主项目任务失败: $e');
+    }
+  }
+
+  // 获取团队的主项目任务
+  Future<Task?> getTeamMainProject(String teamId) async {
+    try {
+      const String key = 'team_main_projects';
+      final storage = StorageService();
+
+      final data = await storage.getData(key);
+      if (data != null) {
+        final projectsList = List<Map<String, dynamic>>.from(data);
+        final projectData = projectsList.firstWhere(
+          (project) => project['poolId'] == teamId,
+          orElse: () => <String, dynamic>{},
+        );
+
+        if (projectData.isNotEmpty) {
+          return Task.fromJson(projectData);
+        }
+      }
+      return null;
+    } catch (e) {
+      print('获取主项目任务失败: $e');
+      return null;
+    }
+  }
+
+  // 获取所有团队的主项目
+  Future<List<Task>> getAllMainProjects() async {
+    try {
+      const String key = 'team_main_projects';
+      final storage = StorageService();
+
+      final data = await storage.getData(key);
+      if (data != null) {
+        final projectsList = List<Map<String, dynamic>>.from(data);
+        return projectsList.map((project) => Task.fromJson(project)).toList();
+      }
+      return [];
+    } catch (e) {
+      print('获取所有主项目失败: $e');
+      return [];
+    }
   }
 
   // 释放资源

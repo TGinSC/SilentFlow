@@ -1,5 +1,7 @@
 import 'subtask_model.dart';
+import 'task_template_model.dart';
 
+// 统一的任务模型 - 包含项目和任务，支持模板创建
 class Task {
   final String id;
   final String poolId;
@@ -28,6 +30,14 @@ class Task {
   final bool isTeamTask; // 是否为团队任务
   final int maxAssignees; // 最大分配人数
 
+  // 新增字段 - 统一任务概念
+  final TaskLevel level; // 任务层级（项目级/任务级）
+  final String? parentTaskId; // 父任务ID（用于子任务）
+  final List<String> childTaskIds; // 子任务ID列表
+  final TaskTemplate? fromTemplate; // 来源模板
+  final TaskCreationMethod creationMethod; // 创建方式
+  final Map<String, dynamic> templateParams; // 模板参数
+
   const Task({
     required this.id,
     required this.poolId,
@@ -55,6 +65,13 @@ class Task {
     this.milestones = const [],
     this.isTeamTask = false,
     this.maxAssignees = 1,
+    // 新增字段初始化
+    this.level = TaskLevel.task,
+    this.parentTaskId,
+    this.childTaskIds = const [],
+    this.fromTemplate,
+    this.creationMethod = TaskCreationMethod.custom,
+    this.templateParams = const {},
   });
 
   // 任务进度（基于子任务完成情况）
@@ -257,6 +274,15 @@ class Task {
       milestones: List<String>.from(json['milestones'] ?? []),
       isTeamTask: json['isTeamTask'] ?? false,
       maxAssignees: json['maxAssignees'] ?? 1,
+      // 新增字段的反序列化
+      level: TaskLevel.values[json['level'] ?? 1],
+      parentTaskId: json['parentTaskId'],
+      childTaskIds: List<String>.from(json['childTaskIds'] ?? []),
+      fromTemplate: json['fromTemplate'] != null
+          ? TaskTemplate.fromJson(json['fromTemplate'])
+          : null,
+      creationMethod: TaskCreationMethod.values[json['creationMethod'] ?? 1],
+      templateParams: Map<String, dynamic>.from(json['templateParams'] ?? {}),
     );
   }
 
@@ -288,6 +314,13 @@ class Task {
       'milestones': milestones,
       'isTeamTask': isTeamTask,
       'maxAssignees': maxAssignees,
+      // 新增字段的序列化
+      'level': level.index,
+      'parentTaskId': parentTaskId,
+      'childTaskIds': childTaskIds,
+      'fromTemplate': fromTemplate?.toJson(),
+      'creationMethod': creationMethod.index,
+      'templateParams': templateParams,
     };
   }
 
@@ -554,4 +587,19 @@ class TaskReward {
       totalScore: (json['totalScore'] ?? 0.0).toDouble(),
     );
   }
+}
+
+// 任务层级枚举
+enum TaskLevel {
+  project, // 项目级
+  task, // 任务级
+  subtask, // 子任务级
+}
+
+// 任务创建方式
+enum TaskCreationMethod {
+  fromTemplate, // 从模板创建
+  custom, // 自定义创建
+  imported, // 导入创建
+  cloned, // 克隆创建
 }
