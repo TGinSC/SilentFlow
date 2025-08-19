@@ -48,17 +48,22 @@ class _WorkflowGraphWidgetState extends State<WorkflowGraphWidget> {
     });
 
     try {
+      // 修复：直接传递teamId给getWorkflowGraph方法
       final workflowData =
           await WorkflowService.getWorkflowGraph(widget.teamId);
-      setState(() {
-        _workflowData = workflowData;
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
       if (mounted) {
+        setState(() {
+          _workflowData = workflowData;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('WorkflowGraphWidget: 加载工作流数据失败 - $e');
+      if (mounted) {
+        setState(() {
+          _workflowData = {};
+          _isLoading = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('加载团队工作流失败: $e'),

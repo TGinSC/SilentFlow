@@ -4,7 +4,6 @@ import '../../models/task_model.dart';
 import '../../providers/app_provider.dart';
 import '../../providers/team_pool_provider.dart';
 import '../../services/task_service.dart';
-import '../../services/team_pool_service.dart';
 import '../../widgets/task_creation_dialog.dart';
 import '../workflow/workflow_screen.dart';
 import 'task_detail_screen.dart';
@@ -31,12 +30,31 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _loadTasks();
+
+    // 🆕 监听团队池变化，自动刷新任务
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final teamPoolProvider = context.read<TeamPoolProvider>();
+      teamPoolProvider.addListener(_onTeamPoolChanged);
+    });
   }
 
   @override
   void dispose() {
+    // 🆕 移除监听器
+    final teamPoolProvider = context.read<TeamPoolProvider>();
+    teamPoolProvider.removeListener(_onTeamPoolChanged);
     _tabController.dispose();
     super.dispose();
+  }
+
+  // 🆕 团队池变化处理
+  void _onTeamPoolChanged() {
+    // 延迟执行，确保团队创建完成后再刷新任务
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        _loadTasks();
+      }
+    });
   }
 
   Future<void> _loadTasks() async {
@@ -58,13 +76,6 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
 
         // 加载用户所在的每个团队的任务
         for (final team in userTeams) {
-          // 加载团队的主项目任务
-          final teamPoolService = TeamPoolService();
-          final mainProject = await teamPoolService.getTeamMainProject(team.id);
-          if (mainProject != null) {
-            _tasks.add(mainProject);
-          }
-
           // 加载团队的其他任务
           final teamTasks = await TaskService.getTeamTasks(team.id);
           _tasks.addAll(teamTasks);
@@ -127,58 +138,74 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('任务面板'),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(icon: Icon(Icons.assignment_ind), text: '我的任务'),
-            Tab(icon: Icon(Icons.assignment), text: '可认领'),
-            Tab(icon: Icon(Icons.dashboard), text: '全部任务'),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.account_tree),
-            tooltip: '工作流图',
-            onPressed: () => _navigateToWorkflowGraph(),
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadTasks,
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // 搜索和筛选栏
-          _buildSearchAndFilter(),
-
-          // 任务列表
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : TabBarView(
-                    controller: _tabController,
-                    children: [
-                      _buildHierarchicalTaskList(
-                          _getFilteredTasks(_myTasks), true),
-                      _buildHierarchicalTaskList(
-                          _getFilteredTasks(_availableTasks), false),
-                      _buildHierarchicalTaskList(
-                          _getFilteredTasks(_tasks), false),
-                    ],
+    // 🆕 使用Consumer监听团队池变化
+    return Consumer<TeamPoolProvider>(
+      builder: (context, teamPoolProvider, child) {
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('任务面板'),
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            bottom: TabBar(
+              controller: _tabController,
+              tabs: const [
+                Tab(icon: Icon(Icons.assignment_ind), text: '我的任务'),
+                Tab(icon: Icon(Icons.assignment), text: '可认领'),
+                Tab(icon: Icon(Icons.dashboard), text: '全部任务'),
+              ],
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.account_tree),
+                tooltip: '工作流图',
+                onPressed: () => _navigateToWorkflowGraph(),
+              ),
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: _loadTasks,
+              ),
+              // 🆕 显示团队数量用于调试
+              if (teamPoolProvider.teamPools.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Center(
+                    child: Text(
+                      '${teamPoolProvider.teamPools.length}团',
+                      style: const TextStyle(fontSize: 12),
+                    ),
                   ),
+                ),
+            ],
           ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showCreateTaskDialog(),
-        child: const Icon(Icons.add),
-      ),
+          body: Column(
+            children: [
+              // 搜索和筛选栏
+              _buildSearchAndFilter(),
+
+              // 任务列表
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : TabBarView(
+                        controller: _tabController,
+                        children: [
+                          _buildHierarchicalTaskList(
+                              _getFilteredTasks(_myTasks), true),
+                          _buildHierarchicalTaskList(
+                              _getFilteredTasks(_availableTasks), false),
+                          _buildHierarchicalTaskList(
+                              _getFilteredTasks(_tasks), false),
+                        ],
+                      ),
+              ),
+            ],
+          ),
+          floatingActionButton: FloatingActionButton(
+            onPressed: () => _showCreateTaskDialog(),
+            child: const Icon(Icons.add),
+          ),
+        );
+      },
     );
   }
 

@@ -23,7 +23,7 @@ class WorkflowScreen extends StatefulWidget {
 
 class _WorkflowScreenState extends State<WorkflowScreen>
     with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+  TabController? _tabController;
   List<TeamPool> _userTeams = [];
   TeamPool? _selectedTeam;
   bool _isLoading = true;
@@ -36,11 +36,13 @@ class _WorkflowScreenState extends State<WorkflowScreen>
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _tabController?.dispose();
     super.dispose();
   }
 
   Future<void> _loadUserTeams() async {
+    if (!mounted) return;
+
     setState(() {
       _isLoading = true;
     });
@@ -68,24 +70,30 @@ class _WorkflowScreenState extends State<WorkflowScreen>
           _selectedTeam = _userTeams.first;
         }
 
-        // 初始化TabController
-        _tabController = TabController(
-          length: _userTeams.isEmpty ? 1 : _userTeams.length,
-          vsync: this,
-          initialIndex:
-              _selectedTeam != null ? _userTeams.indexOf(_selectedTeam!) : 0,
-        );
+        // 安全地初始化TabController
+        _tabController?.dispose();
+        if (_userTeams.isNotEmpty && mounted) {
+          _tabController = TabController(
+            length: _userTeams.length,
+            vsync: this,
+            initialIndex:
+                _selectedTeam != null ? _userTeams.indexOf(_selectedTeam!) : 0,
+          );
+        }
       }
     } catch (e) {
+      print('WorkflowScreen: 加载团队数据失败 - $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('加载团队数据失败: $e')),
         );
       }
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -110,10 +118,10 @@ class _WorkflowScreenState extends State<WorkflowScreen>
             tooltip: '工作流说明',
           ),
         ],
-        bottom: _userTeams.isEmpty
+        bottom: _userTeams.isEmpty || _tabController == null
             ? null
             : TabBar(
-                controller: _tabController,
+                controller: _tabController!,
                 isScrollable: _userTeams.length > 3,
                 indicatorColor: Colors.white,
                 labelColor: Colors.white,
@@ -189,6 +197,10 @@ class _WorkflowScreenState extends State<WorkflowScreen>
   }
 
   Widget _buildWorkflowContent() {
+    if (_userTeams.isEmpty || _tabController == null) {
+      return _buildEmptyState();
+    }
+
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -203,7 +215,7 @@ class _WorkflowScreenState extends State<WorkflowScreen>
         ),
       ),
       child: TabBarView(
-        controller: _tabController,
+        controller: _tabController!,
         children: _userTeams.map((team) => _buildTeamWorkflow(team)).toList(),
       ),
     );

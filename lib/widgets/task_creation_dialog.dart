@@ -4,7 +4,6 @@ import '../models/task_model.dart';
 import '../models/task_template_model.dart';
 import '../models/team_pool_model.dart';
 import '../providers/app_provider.dart';
-import '../providers/team_pool_provider.dart';
 import '../services/task_service.dart';
 
 class TaskCreationDialog extends StatefulWidget {
@@ -58,9 +57,14 @@ class _TaskCreationDialogState extends State<TaskCreationDialog>
   }
 
   void _loadTaskTemplates() {
-    final teamPoolProvider = context.read<TeamPoolProvider>();
-    _availableTemplates = teamPoolProvider.getTaskTemplates();
-    setState(() {});
+    try {
+      _availableTemplates = DefaultTaskTemplates.all;
+      setState(() {});
+    } catch (e) {
+      print('Error loading task templates: $e');
+      _availableTemplates = [];
+      setState(() {});
+    }
   }
 
   @override
@@ -201,18 +205,27 @@ class _TaskCreationDialogState extends State<TaskCreationDialog>
                       ),
                     ),
                   )
-                : GridView.builder(
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      childAspectRatio: 1.2,
-                    ),
-                    itemCount: _availableTemplates.length,
-                    itemBuilder: (context, index) {
-                      final template = _availableTemplates[index];
-                      return _buildTemplateCard(template);
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      // 📱 根据屏幕尺寸动态调整网格布局
+                      final screenWidth = MediaQuery.of(context).size.width;
+                      final isMobile = screenWidth < 600;
+                      final crossAxisCount = isMobile ? 1 : 2; // 移动端单列，桌面端双列
+                      final aspectRatio = isMobile ? 2.8 : 1.4; // 移动端更宽的比例
+
+                      return GridView.builder(
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: crossAxisCount,
+                          crossAxisSpacing: isMobile ? 8 : 12,
+                          mainAxisSpacing: isMobile ? 8 : 12,
+                          childAspectRatio: aspectRatio, // 动态调整比例
+                        ),
+                        itemCount: _availableTemplates.length,
+                        itemBuilder: (context, index) {
+                          final template = _availableTemplates[index];
+                          return _buildTemplateCard(template);
+                        },
+                      );
                     },
                   ),
           ),
@@ -223,6 +236,10 @@ class _TaskCreationDialogState extends State<TaskCreationDialog>
 
   Widget _buildTemplateCard(TaskTemplate template) {
     final isSelected = _selectedTemplate?.id == template.id;
+
+    // 📱 移动端适配：根据屏幕尺寸调整卡片布局
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 600;
 
     return GestureDetector(
       onTap: () {
@@ -243,7 +260,7 @@ class _TaskCreationDialogState extends State<TaskCreationDialog>
         });
       },
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(isMobile ? 12 : 16),
         decoration: BoxDecoration(
           color: isSelected ? Colors.blue[50] : Colors.white,
           border: Border.all(
@@ -254,24 +271,25 @@ class _TaskCreationDialogState extends State<TaskCreationDialog>
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min, // 🔧 防止溢出
           children: [
             Row(
               children: [
                 Icon(
                   Icons.task_alt,
                   color: isSelected ? Colors.blue[600] : Colors.grey[600],
-                  size: 24,
+                  size: isMobile ? 20 : 24,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     template.name,
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: isMobile ? 13 : 14,
                       fontWeight: FontWeight.bold,
                       color: isSelected ? Colors.blue[600] : Colors.black87,
                     ),
-                    maxLines: 2,
+                    maxLines: isMobile ? 1 : 2, // 📱 移动端减少行数
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -281,32 +299,61 @@ class _TaskCreationDialogState extends State<TaskCreationDialog>
             Text(
               template.description,
               style: TextStyle(
-                fontSize: 12,
+                fontSize: isMobile ? 11 : 12,
                 color: Colors.grey[600],
               ),
-              maxLines: 3,
+              maxLines: isMobile ? 2 : 3, // 📱 移动端减少行数
               overflow: TextOverflow.ellipsis,
             ),
-            const Spacer(),
+            const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  template.category,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.grey[500],
+                Flexible(
+                  // 🔧 防止类别文本溢出
+                  child: Text(
+                    template.category,
+                    style: TextStyle(
+                      fontSize: isMobile ? 9 : 10,
+                      color: Colors.grey[500],
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 Text(
                   '${(template.estimatedMinutes / 60).round()}h',
                   style: TextStyle(
-                    fontSize: 10,
+                    fontSize: isMobile ? 9 : 10,
                     fontWeight: FontWeight.w600,
                     color: isSelected ? Colors.blue[600] : Colors.grey[600],
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              // 🔧 替换固定高度布局为自适应布局
+              spacing: 4,
+              runSpacing: 2,
+              children: template.tags.take(isMobile ? 2 : 3).map((tag) {
+                return Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isMobile ? 4 : 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[100],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    tag,
+                    style: TextStyle(
+                      fontSize: isMobile ? 8 : 9,
+                      color: Colors.blue[600],
+                    ),
+                  ),
+                );
+              }).toList(),
             ),
           ],
         ),

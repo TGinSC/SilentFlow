@@ -55,11 +55,7 @@ class _TeamPoolScreenState extends State<TeamPoolScreen>
   void _filterTeams(String query) {
     final teamPoolProvider =
         Provider.of<TeamPoolProvider>(context, listen: false);
-    if (query.isEmpty) {
-      _filteredTeams = teamPoolProvider.getPublicTeams();
-    } else {
-      _filteredTeams = teamPoolProvider.searchTeams(query);
-    }
+    _filteredTeams = teamPoolProvider.searchTeamsSync(query);
     setState(() {});
   }
 
@@ -416,7 +412,7 @@ class _TeamPoolScreenState extends State<TeamPoolScreen>
       builder: (context, provider, child) {
         final appProvider = Provider.of<AppProvider>(context);
         final userId = appProvider.currentUser?.id ?? '';
-        final myTeams = provider.getUserTeams(userId);
+        final myTeams = provider.getUserTeamsSync(userId);
 
         if (provider.isLoading) {
           return const Center(
@@ -481,7 +477,7 @@ class _TeamPoolScreenState extends State<TeamPoolScreen>
   Widget _buildDiscoverTeamsTab() {
     return Consumer<TeamPoolProvider>(
       builder: (context, provider, child) {
-        final publicTeams = provider.getPublicTeams();
+        final publicTeams = provider.allPublicTeams;
 
         return Column(
           children: [
@@ -561,8 +557,8 @@ class _TeamPoolScreenState extends State<TeamPoolScreen>
       builder: (context, provider, child) {
         final appProvider = Provider.of<AppProvider>(context);
         final userId = appProvider.currentUser?.id ?? '';
-        final myTeams = provider.getUserTeams(userId);
-        final leadingTeams = provider.getUserLeadingTeams(userId);
+        final myTeams = provider.getUserTeamsSync(userId);
+        final leadingTeams = provider.getUserLeadingTeamsSync(userId);
 
         return SingleChildScrollView(
           padding: const EdgeInsets.all(20),

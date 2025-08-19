@@ -66,43 +66,52 @@ class WorkflowService {
   }
 
   /// 获取任务的工作流图数据
-  static Future<Map<String, dynamic>> getWorkflowGraph(String projectId) async {
-    final tasks = await TaskService.getTeamTasks(projectId);
-    final projectTasks =
-        tasks.where((task) => task.level == TaskLevel.task).toList();
+  static Future<Map<String, dynamic>> getWorkflowGraph(String teamId) async {
+    try {
+      final tasks = await TaskService.getTeamTasks(teamId);
+      final projectTasks =
+          tasks.where((task) => task.level == TaskLevel.task).toList();
 
-    List<Map<String, dynamic>> nodes = [];
-    List<Map<String, dynamic>> edges = [];
+      List<Map<String, dynamic>> nodes = [];
+      List<Map<String, dynamic>> edges = [];
 
-    // 创建节点
-    for (final task in projectTasks) {
-      nodes.add({
-        'id': task.id,
-        'title': task.title,
-        'status': task.status.name,
-        'workflowStatus': task.workflowStatus.name,
-        'progress': await _calculateTaskProgress(task.id),
-        'assignees': task.assignedUsers,
-        'level': task.level.name,
-      });
-    }
-
-    // 创建边（连接线）
-    for (final task in projectTasks) {
-      for (final dependentTaskId in task.dependentTasks) {
-        edges.add({
-          'source': task.id,
-          'target': dependentTaskId,
-          'type': 'dependency',
+      // 创建节点
+      for (final task in projectTasks) {
+        nodes.add({
+          'id': task.id,
+          'title': task.title,
+          'status': task.status.name,
+          'workflowStatus': task.workflowStatus.name,
+          'progress': await _calculateTaskProgress(task.id),
+          'assignees': task.assignedUsers,
+          'level': task.level.name,
         });
       }
-    }
 
-    return {
-      'nodes': nodes,
-      'edges': edges,
-      'layout': 'dagre', // 有向无环图布局
-    };
+      // 创建边（连接线）
+      for (final task in projectTasks) {
+        for (final dependentTaskId in task.dependentTasks) {
+          edges.add({
+            'source': task.id,
+            'target': dependentTaskId,
+            'type': 'dependency',
+          });
+        }
+      }
+
+      return {
+        'nodes': nodes,
+        'edges': edges,
+        'layout': 'dagre', // 有向无环图布局
+      };
+    } catch (e) {
+      print('WorkflowService.getWorkflowGraph: 错误 - $e');
+      return {
+        'nodes': <Map<String, dynamic>>[],
+        'edges': <Map<String, dynamic>>[],
+        'layout': 'dagre',
+      };
+    }
   }
 
   /// 计算任务进度

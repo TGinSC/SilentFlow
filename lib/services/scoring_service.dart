@@ -1,10 +1,41 @@
-// 前端评分计算服务
+// 前端评分计算服务和后端评分API集成
 // 基于后端数据进行前端的贡献值和默契度计算
 import '../models/user_model.dart';
 import '../models/task_model.dart';
 import '../models/subtask_model.dart';
+import 'api_service.dart';
+import 'package:dio/dio.dart';
 
 class ScoringService {
+  // 从后端获取个人评分 - POST /score/getpersonal
+  static Future<Map<String, dynamic>?> getPersonalScore({
+    required int userUID,
+    required int teamUID,
+  }) async {
+    try {
+      final response = await ApiService.post('/score/getpersonal', data: {
+        'userUID': userUID,
+        'teamUID': teamUID,
+      });
+
+      if (response.statusCode == 200) {
+        final data = response.data;
+        if (data['error'] == null || data['error'].isEmpty) {
+          return data['score'];
+        } else {
+          print('获取个人评分失败: ${data['error']}');
+        }
+      }
+      return null;
+    } on DioException catch (e) {
+      print('获取个人评分网络错误: ${e.message}');
+      return null;
+    } catch (e) {
+      print('获取个人评分异常: $e');
+      return null;
+    }
+  }
+
   /// 计算用户贡献值
   /// 基于用户完成的子任务数量、质量和及时性
   static double calculateContributionScore({

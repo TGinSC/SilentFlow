@@ -32,17 +32,28 @@ class UserService {
         if (data['error'] == null || data['error'].toString().isEmpty) {
           final returnedUserUID = data['userUID'];
 
-          // 根据后端返回的userUID获取完整用户信息
-          final userInfo = await getUserProfile(returnedUserUID.toString());
-          if (userInfo != null) {
-            // 保存登录信息到本地
+          // 获取完整用户信息
+          final userResponse =
+              await ApiService.get('/user/get/$returnedUserUID');
+          if (userResponse.statusCode == 200 &&
+              userResponse.data['user'] != null) {
+            final userData = userResponse.data['user'];
+            final user = User(
+              id: userData['userUID'].toString(),
+              name: 'User_${userData['userUID']}',
+              createdAt: DateTime.now(),
+              stats: const UserStats(),
+              profile: UserProfile.fromJson({}),
+            );
+
+            // 保存登录信息
             await StorageService.saveLoginInfo(
-              userId: userInfo.id,
-              username: userInfo.name,
+              userId: user.id,
+              username: user.name,
               rememberLogin: true,
             );
 
-            return userInfo;
+            return user;
           }
         } else {
           print('登录失败: ${data['error']}');
