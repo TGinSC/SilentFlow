@@ -125,6 +125,10 @@ class TeamPoolProvider with ChangeNotifier {
         _teamPools.add(newTeam);
         print('团队已添加到本地缓存，当前团队数量: ${_teamPools.length}');
 
+        // 🔧 设置新创建的团队为当前团队
+        _currentTeam = newTeam;
+        print('已设置当前团队为: ${newTeam.name}');
+
         // 🆕 为新团队创建主项目任务
         try {
           print('为新团队创建主项目任务...');

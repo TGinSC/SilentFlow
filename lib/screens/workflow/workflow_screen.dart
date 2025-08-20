@@ -106,6 +106,13 @@ class _WorkflowScreenState extends State<WorkflowScreen>
         backgroundColor: const Color(0xFF667eea),
         foregroundColor: Colors.white,
         elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            // 🔧 修复：确保正确返回
+            Navigator.of(context).pop();
+          },
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -179,7 +186,10 @@ class _WorkflowScreenState extends State<WorkflowScreen>
           ),
           const SizedBox(height: 32),
           ElevatedButton.icon(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () {
+              // 🔧 修复：简单返回
+              Navigator.of(context).pop();
+            },
             icon: const Icon(Icons.arrow_back),
             label: const Text('返回团队池'),
             style: ElevatedButton.styleFrom(

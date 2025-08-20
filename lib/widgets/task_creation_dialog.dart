@@ -207,18 +207,37 @@ class _TaskCreationDialogState extends State<TaskCreationDialog>
                   )
                 : LayoutBuilder(
                     builder: (context, constraints) {
-                      // 📱 根据屏幕尺寸动态调整网格布局
+                      // 📱 根据屏幕尺寸和对话框宽度动态调整网格布局
+                      final availableWidth = constraints.maxWidth;
                       final screenWidth = MediaQuery.of(context).size.width;
-                      final isMobile = screenWidth < 600;
-                      final crossAxisCount = isMobile ? 1 : 2; // 移动端单列，桌面端双列
-                      final aspectRatio = isMobile ? 2.8 : 1.4; // 移动端更宽的比例
+                      final isMobile =
+                          availableWidth < 500 || screenWidth < 600;
+
+                      // 根据可用宽度计算列数
+                      int crossAxisCount;
+                      double aspectRatio;
+
+                      if (isMobile || availableWidth < 400) {
+                        // 移动端或窄屏：单列布局
+                        crossAxisCount = 1;
+                        aspectRatio = 3.2; // 更宽的比例适应单列
+                      } else if (availableWidth < 600) {
+                        // 中等屏幕：单列但稍窄的比例
+                        crossAxisCount = 1;
+                        aspectRatio = 2.5;
+                      } else {
+                        // 大屏幕：双列布局
+                        crossAxisCount = 2;
+                        aspectRatio = 1.4;
+                      }
 
                       return GridView.builder(
+                        padding: EdgeInsets.zero,
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: crossAxisCount,
-                          crossAxisSpacing: isMobile ? 8 : 12,
-                          mainAxisSpacing: isMobile ? 8 : 12,
-                          childAspectRatio: aspectRatio, // 动态调整比例
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                          childAspectRatio: aspectRatio,
                         ),
                         itemCount: _availableTemplates.length,
                         itemBuilder: (context, index) {
@@ -271,8 +290,8 @@ class _TaskCreationDialogState extends State<TaskCreationDialog>
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min, // 🔧 防止溢出
           children: [
+            // 标题行 - 确保不溢出
             Row(
               children: [
                 Icon(
@@ -289,37 +308,45 @@ class _TaskCreationDialogState extends State<TaskCreationDialog>
                       fontWeight: FontWeight.bold,
                       color: isSelected ? Colors.blue[600] : Colors.black87,
                     ),
-                    maxLines: isMobile ? 1 : 2, // 📱 移动端减少行数
+                    maxLines: 1, // 📱 限制为单行，防止溢出
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 8),
-            Text(
-              template.description,
-              style: TextStyle(
-                fontSize: isMobile ? 11 : 12,
-                color: Colors.grey[600],
+
+            // 描述 - 自适应高度
+            Flexible(
+              child: Text(
+                template.description,
+                style: TextStyle(
+                  fontSize: isMobile ? 11 : 12,
+                  color: Colors.grey[600],
+                ),
+                maxLines: isMobile ? 2 : 3, // 📱 移动端减少行数
+                overflow: TextOverflow.ellipsis,
               ),
-              maxLines: isMobile ? 2 : 3, // 📱 移动端减少行数
-              overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 8),
+
+            // 底部信息区域
+            const Spacer(),
+
+            // 类别和时长行
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Flexible(
-                  // 🔧 防止类别文本溢出
+                Expanded(
                   child: Text(
                     template.category,
                     style: TextStyle(
                       fontSize: isMobile ? 9 : 10,
                       color: Colors.grey[500],
                     ),
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                const SizedBox(width: 4),
                 Text(
                   '${(template.estimatedMinutes / 60).round()}h',
                   style: TextStyle(
@@ -330,30 +357,37 @@ class _TaskCreationDialogState extends State<TaskCreationDialog>
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            Wrap(
-              // 🔧 替换固定高度布局为自适应布局
-              spacing: 4,
-              runSpacing: 2,
-              children: template.tags.take(isMobile ? 2 : 3).map((tag) {
-                return Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: isMobile ? 4 : 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.blue[100],
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    tag,
-                    style: TextStyle(
-                      fontSize: isMobile ? 8 : 9,
-                      color: Colors.blue[600],
-                    ),
-                  ),
-                );
-              }).toList(),
+            const SizedBox(height: 6),
+
+            // 标签区域 - 使用 Wrap 确保不溢出
+            SizedBox(
+              height: isMobile ? 20 : 24, // 固定高度防止布局跳动
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: template.tags
+                      .take(isMobile ? 2 : 3)
+                      .map((tag) => Container(
+                            margin: const EdgeInsets.only(right: 4),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: isMobile ? 4 : 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.blue[100],
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              tag,
+                              style: TextStyle(
+                                fontSize: isMobile ? 8 : 9,
+                                color: Colors.blue[600],
+                              ),
+                            ),
+                          ))
+                      .toList(),
+                ),
+              ),
             ),
           ],
         ),

@@ -748,15 +748,23 @@ class TaskService {
   /// 获取指定团队的所有任务（不包括主项目）
   static Future<List<Task>> getTeamTasks(String teamId) async {
     try {
+      print('TaskService.getTeamTasks: 获取团队 $teamId 的任务');
+
       // 获取所有任务并筛选出指定团队的任务
       final allTasks = await getAllTasks();
-      return allTasks
-          .where((task) =>
-              task.poolId == teamId &&
-              task.level != TaskLevel.project) // 排除主项目，主项目单独处理
-          .toList();
+      print('TaskService.getTeamTasks: 总任务数: ${allTasks.length}');
+
+      final teamTasks =
+          allTasks.where((task) => task.poolId == teamId).toList();
+
+      print('TaskService.getTeamTasks: 团队 $teamId 的任务数量: ${teamTasks.length}');
+
+      // 按创建时间排序，最新的在前
+      teamTasks.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+      return teamTasks;
     } catch (e) {
-      print('获取团队任务失败: $e');
+      print('TaskService.getTeamTasks: 获取团队任务失败: $e');
       return [];
     }
   }

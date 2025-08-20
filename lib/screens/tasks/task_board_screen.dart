@@ -29,10 +29,12 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _loadTasks();
 
-    // 🆕 监听团队池变化，自动刷新任务
+    // 🆕 立即加载任务
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadTasks();
+
+      // 监听团队池变化，自动刷新任务
       final teamPoolProvider = context.read<TeamPoolProvider>();
       teamPoolProvider.addListener(_onTeamPoolChanged);
     });
@@ -49,8 +51,9 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
 
   // 🆕 团队池变化处理
   void _onTeamPoolChanged() {
-    // 延迟执行，确保团队创建完成后再刷新任务
-    Future.delayed(const Duration(milliseconds: 500), () {
+    print('TaskBoardScreen: 团队池发生变化，重新加载任务');
+    // 🔧 减少延迟时间，更快响应变化
+    Future.delayed(const Duration(milliseconds: 200), () {
       if (mounted) {
         _loadTasks();
       }
@@ -66,38 +69,76 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       final appProvider = context.read<AppProvider>();
       final teamPoolProvider = context.read<TeamPoolProvider>();
       final userId = appProvider.currentUser?.id;
+
+      if (userId == null) {
+        print('TaskBoardScreen: 用户ID为空，无法加载任务');
+        setState(() {
+          _tasks = [];
+          _myTasks = [];
+          _availableTasks = [];
+          _isLoading = false;
+        });
+        return;
+      }
+
+      print('TaskBoardScreen: 开始加载用户 $userId 的任务');
+      print('TaskBoardScreen: 当前团队池数量: ${teamPoolProvider.teamPools.length}');
+
+      // 🔧 修复：确保先获取用户的团队列表
       final userTeams = teamPoolProvider.teamPools
           .where((team) =>
               team.memberIds.contains(userId) || team.leaderId == userId)
           .toList();
 
-      if (userId != null) {
-        _tasks = [];
-
-        // 加载用户所在的每个团队的任务
-        for (final team in userTeams) {
-          // 加载团队的其他任务
-          final teamTasks = await TaskService.getTeamTasks(team.id);
-          _tasks.addAll(teamTasks);
-        }
-
-        // 分类任务
-        _myTasks = _tasks
-            .where((task) =>
-                task.assignedUsers.contains(userId) ||
-                task.assigneeId == userId)
-            .toList();
-
-        _availableTasks = _tasks
-            .where((task) =>
-                task.status == TaskStatus.pending &&
-                !task.assignedUsers.contains(userId) &&
-                task.assigneeId != userId)
-            .toList();
-
-        setState(() {});
+      print('TaskBoardScreen: 用户参与的团队数量: ${userTeams.length}');
+      for (var team in userTeams) {
+        print('TaskBoardScreen: 团队 - ID: ${team.id}, 名称: ${team.name}');
       }
+
+      _tasks = [];
+
+      // 🔧 增强：并行加载所有团队的任务，提高效率
+      final taskLoadFutures = userTeams.map((team) async {
+        try {
+          print('TaskBoardScreen: 加载团队 ${team.id} (${team.name}) 的任务');
+          final teamTasks = await TaskService.getTeamTasks(team.id);
+          print('TaskBoardScreen: 团队 ${team.id} 加载到 ${teamTasks.length} 个任务');
+          return teamTasks;
+        } catch (e) {
+          print('TaskBoardScreen: 加载团队 ${team.id} 的任务失败: $e');
+          return <Task>[];
+        }
+      }).toList();
+
+      // 等待所有团队任务加载完成
+      final allTeamTasks = await Future.wait(taskLoadFutures);
+
+      // 合并所有团队的任务
+      for (final teamTasks in allTeamTasks) {
+        _tasks.addAll(teamTasks);
+      }
+
+      print('TaskBoardScreen: 总共加载了 ${_tasks.length} 个任务');
+
+      // 🔧 优化：任务分类逻辑
+      _myTasks = _tasks
+          .where((task) =>
+              task.assignedUsers.contains(userId) || task.assigneeId == userId)
+          .toList();
+
+      _availableTasks = _tasks
+          .where((task) =>
+              task.status == TaskStatus.pending &&
+              !task.assignedUsers.contains(userId) &&
+              task.assigneeId != userId)
+          .toList();
+
+      print('TaskBoardScreen: 我的任务: ${_myTasks.length} 个');
+      print('TaskBoardScreen: 可认领任务: ${_availableTasks.length} 个');
+
+      setState(() {});
     } catch (e) {
+      print('TaskBoardScreen: 加载任务异常: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('加载任务失败: $e')),
@@ -164,15 +205,22 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
                 icon: const Icon(Icons.refresh),
                 onPressed: _loadTasks,
               ),
-              // 🆕 显示团队数量用于调试
+              // 🔧 修改显示逻辑：显示更详细的调试信息
               if (teamPoolProvider.teamPools.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
-                  child: Center(
-                    child: Text(
-                      '${teamPoolProvider.teamPools.length}团',
-                      style: const TextStyle(fontSize: 12),
-                    ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        '${teamPoolProvider.teamPools.length}团',
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                      Text(
+                        '${_tasks.length}任务',
+                        style: const TextStyle(fontSize: 9),
+                      ),
+                    ],
                   ),
                 ),
             ],
@@ -859,14 +907,27 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
 
   Future<void> _showCreateTaskDialog() async {
     final teamPoolProvider = context.read<TeamPoolProvider>();
+
+    // 🔧 确保有可用的团队
+    if (teamPoolProvider.teamPools.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('请先创建或加入团队，然后再创建任务'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     final result = await showDialog<bool>(
       context: context,
       builder: (context) => TaskCreationDialog(
-        team: teamPoolProvider.currentTeam,
+        team: teamPoolProvider.currentTeam ?? teamPoolProvider.teamPools.first,
       ),
     );
 
     if (result == true) {
+      print('TaskBoardScreen: 任务创建成功，重新加载任务列表');
       _loadTasks();
     }
   }
@@ -884,13 +945,19 @@ class _TaskBoardScreenState extends State<TaskBoardScreen>
       return;
     }
 
+    // 🔧 选择当前团队或第一个可用团队
+    final selectedTeam =
+        teamPoolProvider.currentTeam ?? teamPoolProvider.teamPools.first;
+
+    print('TaskBoardScreen: 导航到工作流图，团队: ${selectedTeam.name}');
+
     // 直接导航到工作流页面
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => WorkflowScreen(
-          teamId: teamPoolProvider.currentTeam?.id,
-          teamName: teamPoolProvider.currentTeam?.name,
+          teamId: selectedTeam.id,
+          teamName: selectedTeam.name,
         ),
       ),
     );
