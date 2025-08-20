@@ -1,4 +1,4 @@
-﻿# 静默团队 (SilentFlow)
+# 静默团队 (SilentFlow)
 
 <div align="center">
 
