@@ -111,11 +111,9 @@ class AppProvider with ChangeNotifier {
   Future<void> initialize() async {
     try {
       setLoading(true);
-      // TODO: 检查本地存储的登录状态
-      // 如果有保存的token，尝试获取用户信息
 
-      // 为了测试，创建一个模拟用户
-      await _createTestUser();
+      // 检查本地存储的登录状态
+      await _checkLocalLoginStatus();
 
       await Future.delayed(const Duration(milliseconds: 500)); // 模拟初始化时间
     } catch (e) {
@@ -125,9 +123,31 @@ class AppProvider with ChangeNotifier {
     }
   }
 
-  // 创建测试用户数据
-  Future<void> _createTestUser() async {
-    _currentUser = User(
+  // 检查本地登录状态
+  Future<void> _checkLocalLoginStatus() async {
+    try {
+      // TODO: 从本地存储检查是否有保存的登录token
+      // final token = await StorageService.getLoginToken();
+      // if (token != null) {
+      //   // 尝试使用token获取用户信息
+      //   final user = await UserService.getUserByToken(token);
+      //   if (user != null) {
+      //     _currentUser = user;
+      //     notifyListeners();
+      //   }
+      // }
+
+      // 暂时不自动登录，让用户手动登录
+      // 注释掉自动创建测试用户的代码
+      print('检查登录状态：未找到本地登录信息');
+    } catch (e) {
+      print('检查登录状态失败: $e');
+    }
+  }
+
+  // 创建测试用户（仅用于登录后）
+  User createTestUser() {
+    return User(
       id: 'test_user_001',
       name: '张小明',
       avatar: null, // 没有头像，将显示默认图标
@@ -216,6 +236,5 @@ class AppProvider with ChangeNotifier {
         ],
       ),
     );
-    notifyListeners();
   }
 }
