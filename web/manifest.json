@@ -1,11 +1,11 @@
 {
-    "name": "silentflow",
-    "short_name": "silentflow",
+    "name": "SilentFlow - 团队协作平台",
+    "short_name": "SilentFlow",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "智能团队协作管理系统，通过团队池架构和工作流可视化实现高效协作",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
