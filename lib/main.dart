@@ -6,9 +6,12 @@ import 'screens/main_tab_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'services/api_service.dart';
 
-void main() {
-  // 初始化API服务
-  ApiService.initialize();
+void main() async {
+  // 确保Flutter绑定已初始化
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // 初始化API服务并测试连接
+  await ApiService.initialize();
 
   runApp(const SilentFlowApp());
 }

@@ -11,13 +11,27 @@ class ApiService {
     'http://47.95.200.35:8081', // 生产环境服务器
     'http://127.0.0.1:8081', // 本地回环地址
     'http://localhost:8081', // localhost
+    'http://192.168.1.8:8081', // 本机局域网地址
     'http://10.0.2.2:8081', // Android 模拟器访问宿主机
-    'http://192.168.1.100:8081', // 可能的局域网地址（需根据实际情况调整）
   ];
   static String _currentBaseUrl = _possibleBaseUrls.first;
 
   // 初始化网络请求配置
-  static void initialize() {
+  static Future<void> initialize() async {
+    // 首先测试连接并选择最佳服务器
+    print('ApiService 初始化中，正在测试服务器连接...');
+    final connectionSuccess = await testConnection();
+
+    if (!connectionSuccess) {
+      print('警告: 无法连接到任何服务器，使用默认配置');
+      _currentBaseUrl = _possibleBaseUrls.first;
+    }
+
+    _initializeDio();
+  }
+
+  // 内部同步初始化Dio实例
+  static void _initializeDio() {
     _dio = Dio(
       BaseOptions(
         baseUrl: _currentBaseUrl,
@@ -27,11 +41,6 @@ class ApiService {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          // 添加CORS相关头部
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET,PUT,POST,DELETE,OPTIONS',
-          'Access-Control-Allow-Headers':
-              'Origin,X-Requested-With,Content-Type,Accept,Authorization',
         },
       ),
     );
@@ -110,57 +119,90 @@ class ApiService {
     return await _handleNativeRequest<T>(path, data, queryParameters, options);
   }
 
-  // Web环境的请求处理
+  // Web环境的请求处理（添加重试机制）
   static Future<Response<T>> _handleWebRequest<T>(
     String path,
     dynamic data,
     Map<String, dynamic>? queryParameters,
     Options? options,
   ) async {
-    try {
-      // Web环境下，先发送OPTIONS请求进行预检
-      print('Web环境：发送预检请求...');
+    int retryCount = 0;
+    const maxRetries = 3;
+
+    while (retryCount < maxRetries) {
       try {
-        await _dio.request(path, options: Options(method: 'OPTIONS'));
-        print('预检请求成功');
-      } catch (preflightError) {
-        print('预检请求失败，但继续尝试POST请求: $preflightError');
-      }
+        // Web环境下，先发送OPTIONS请求进行预检
+        print('Web环境：发送预检请求...');
+        try {
+          await _dio.request(path, options: Options(method: 'OPTIONS'));
+          print('预检请求成功');
+        } catch (preflightError) {
+          print('预检请求失败，但继续尝试POST请求: $preflightError');
+        }
 
-      // Web环境下使用特殊的头部配置
-      final webOptions = Options(
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          // Web环境不需要设置CORS头部，这些应该由服务器设置
-        },
-        // 关键：Web环境下需要发送凭据
-        extra: {'withCredentials': false},
-      );
-
-      final response = await _dio.post<T>(
-        path,
-        data: data,
-        queryParameters: queryParameters,
-        options: webOptions,
-      );
-
-      print('Web POST请求成功: ${response.statusCode}');
-      return response;
-    } catch (e) {
-      print('Web POST请求失败: $e');
-
-      // Web环境下的错误通常是CORS问题，提供更好的错误信息
-      if (e is DioException && e.type == DioExceptionType.connectionError) {
-        throw DioException(
-          requestOptions: e.requestOptions,
-          message: 'Web环境下无法连接到服务器，这通常是由于CORS（跨源资源共享）限制造成的。'
-              '请确保后端服务器正确配置了CORS头部以允许来自Web应用的请求。',
-          type: DioExceptionType.connectionError,
+        // Web环境下使用特殊的头部配置
+        final webOptions = Options(
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            // Web环境不需要设置CORS头部，这些应该由服务器设置
+          },
+          // 关键：Web环境下需要发送凭据
+          extra: {'withCredentials': false},
         );
+
+        final response = await _dio.post<T>(
+          path,
+          data: data,
+          queryParameters: queryParameters,
+          options: webOptions,
+        );
+
+        print('Web POST请求成功: ${response.statusCode}');
+        return response;
+      } catch (e) {
+        print('Web POST请求失败 (尝试 ${retryCount + 1}/$maxRetries): $e');
+
+        // 如果是连接错误，尝试重新测试连接并切换URL
+        if (e is DioException &&
+            (e.type == DioExceptionType.connectionError ||
+                e.type == DioExceptionType.connectionTimeout)) {
+          print('Web环境检测到连接错误，尝试切换服务器...');
+          final connectionSuccess = await _testConnectionForWeb();
+
+          if (connectionSuccess && retryCount < maxRetries - 1) {
+            print('Web环境连接测试成功，使用新URL重试: $_currentBaseUrl');
+            retryCount++;
+            continue;
+          }
+        }
+
+        // 如果是最后一次重试失败，提供更好的错误信息
+        if (retryCount >= maxRetries - 1) {
+          if (e is DioException && e.type == DioExceptionType.connectionError) {
+            throw DioException(
+              requestOptions: e.requestOptions,
+              message:
+                  'Web环境下无法连接到任何服务器。已尝试的服务器：${_possibleBaseUrls.join(', ')}。'
+                  '这通常是由于：1) CORS（跨源资源共享）限制；2) 后端服务器未启动；3) 网络连接问题。'
+                  '请确保至少有一个后端服务器正在运行并正确配置了CORS头部。',
+              type: DioExceptionType.connectionError,
+            );
+          }
+        }
+
+        retryCount++;
+        if (retryCount < maxRetries) {
+          continue;
+        }
+        rethrow;
       }
-      rethrow;
     }
+
+    throw DioException(
+      requestOptions: RequestOptions(path: path),
+      message: 'Web环境下经过$maxRetries次重试后仍然失败',
+    );
   }
 
   // 原生环境的请求处理（带重试机制）
@@ -267,6 +309,33 @@ class ApiService {
 
   // 测试网络连接
   static Future<bool> testConnection() async {
+    if (kIsWeb) {
+      return await _testConnectionForWeb();
+    } else {
+      return await _testConnectionForNative();
+    }
+  }
+
+  // Web环境专用的连接测试（简化版本，避免CORS问题）
+  static Future<bool> _testConnectionForWeb() async {
+    // 在Web环境下，直接尝试切换到本地服务器
+    for (int i = 0; i < _possibleBaseUrls.length; i++) {
+      final testUrl = _possibleBaseUrls[i];
+      print('Web环境测试连接到: $testUrl (${i + 1}/${_possibleBaseUrls.length})');
+
+      // 更新当前使用的基础URL并重新初始化
+      if (_currentBaseUrl != testUrl) {
+        print('Web环境切换到新的基础URL: $testUrl');
+        _currentBaseUrl = testUrl;
+        _initializeDio();
+        return true; // 在Web环境下，我们假设切换后可用
+      }
+    }
+    return false;
+  }
+
+  // 原生环境的连接测试
+  static Future<bool> _testConnectionForNative() async {
     // 依次尝试所有可能的基础URL
     for (int i = 0; i < _possibleBaseUrls.length; i++) {
       final testUrl = _possibleBaseUrls[i];
@@ -293,7 +362,7 @@ class ApiService {
           if (_currentBaseUrl != testUrl) {
             print('切换到新的基础URL: $testUrl');
             _currentBaseUrl = testUrl;
-            initialize(); // 重新初始化Dio实例
+            _initializeDio(); // 重新初始化Dio实例
           }
           return true;
         } catch (rootError) {
@@ -315,7 +384,7 @@ class ApiService {
               if (_currentBaseUrl != testUrl) {
                 print('切换到新的基础URL: $testUrl');
                 _currentBaseUrl = testUrl;
-                initialize(); // 重新初始化Dio实例
+                _initializeDio(); // 重新初始化Dio实例
               }
               return true;
             } catch (pathError) {

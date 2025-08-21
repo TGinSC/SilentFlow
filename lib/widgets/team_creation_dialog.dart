@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import '../models/team_template_model.dart';
 import '../providers/team_pool_provider.dart';
 import '../providers/app_provider.dart';
@@ -569,12 +568,6 @@ class _TeamCreationDialogState extends State<TeamCreationDialog> {
 
     if (!mounted) return;
 
-    // Web环境的特殊处理
-    if (kIsWeb) {
-      _showWebEnvironmentDialog();
-      return;
-    }
-
     setState(() {
       _isLoading = true;
     });
@@ -689,79 +682,6 @@ class _TeamCreationDialogState extends State<TeamCreationDialog> {
         });
       }
     }
-  }
-
-  void _showWebEnvironmentDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.web, color: Colors.orange),
-            SizedBox(width: 8),
-            Text('Web环境限制'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('当前运行在Web浏览器环境中，由于浏览器的同源策略限制，无法直接向后端服务器发送POST请求。'),
-            const SizedBox(height: 16),
-            const Text('🔧 解决方案：'),
-            const SizedBox(height: 8),
-            const Text('1. 使用移动应用或桌面应用版本'),
-            const SizedBox(height: 4),
-            const Text('2. 配置后端服务器的CORS头部'),
-            const SizedBox(height: 4),
-            const Text('3. 使用代理服务器转发请求'),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '后端CORS配置示例：',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Access-Control-Allow-Origin: *\n'
-                    'Access-Control-Allow-Methods: POST,GET,OPTIONS\n'
-                    'Access-Control-Allow-Headers: Content-Type',
-                    style: TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              showDialog(
-                context: context,
-                builder: (context) => const DebugInfoDialog(),
-              );
-            },
-            child: const Text('网络测试'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('了解了'),
-          ),
-        ],
-      ),
-    );
   }
 }
 
