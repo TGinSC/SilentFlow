@@ -8,9 +8,9 @@ class ApiService {
   static late Dio _dio;
   // 支持多个可能的后端地址
   static const List<String> _possibleBaseUrls = [
-    'http://47.95.200.35:8081', // 生产环境服务器
     'http://127.0.0.1:8081', // 本地回环地址
     'http://localhost:8081', // localhost
+    'http://47.95.200.35:8081', // 生产环境服务器
     'http://192.168.1.8:8081', // 本机局域网地址
     'http://10.0.2.2:8081', // Android 模拟器访问宿主机
   ];
